@@ -7293,8 +7293,8 @@ final class BLEManager: NSObject, ObservableObject {
     /// tools > Category collapsed on every refresh while a board streamed; LogToolsMenuUITests
     /// runs on it). The delay leaves time to open a menu before the feed starts. Sample data only.
     func startDebugDemoStream() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
-            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
                 guard let self, self.demoMode, let id = self.store.keys.min() else { return }
                 self.lastSeen[id] = Date()
                 self.publishDetections()
