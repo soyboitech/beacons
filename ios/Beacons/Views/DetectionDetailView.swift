@@ -287,7 +287,7 @@ struct DetectionDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.mapHandoffAvailable) private var mapHandoffAvailable
-    @ScaledMetric(relativeTo: .caption) private var signalGraphHeight: CGFloat = 46
+    @ScaledMetric(relativeTo: .caption) private var signalGraphHeight: CGFloat = 80
     /// One column for the MATCH QUALITY cue glyphs, so the two row titles align whichever
     /// symbol each row shows.
     @ScaledMetric(relativeTo: .body) private var matchGlyphColumn: CGFloat = 24
@@ -978,7 +978,7 @@ struct DetectionDetailView: View {
                 // The fixed scale's edge words (signalGraphFraction: -30 dBm at the top, -100 at
                 // the bottom). Hidden from VoiceOver: the graph's value below says the same.
                 // Capped at xxxLarge so the two words never outgrow the plot, itself capped at
-                // 100pt. TWIN: android DetailScreen.kt's signal graph label column.
+                // 160pt. TWIN: android DetailScreen.kt's signal graph label column.
                 VStack(alignment: .leading, spacing: 0) {
                     Text("STRONG")
                     Spacer(minLength: 0)
@@ -994,7 +994,7 @@ struct DetectionDetailView: View {
                     .accessibilityLabel("Signal history")
                     .accessibilityValue("Strong at the top, weak at the bottom")
             }
-            .frame(height: min(signalGraphHeight, 100))
+            .frame(height: min(signalGraphHeight, 160))
         } header: {
             HStack {
                 Kicker("SIGNAL")

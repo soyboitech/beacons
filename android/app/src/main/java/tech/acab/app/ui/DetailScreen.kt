@@ -470,7 +470,7 @@ fun DetailScreen(
                             currentRssi = d.rssi,
                             tone = tone,
                             stale = stale,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(46.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(80.dp),
                         )
                     }
                 }
