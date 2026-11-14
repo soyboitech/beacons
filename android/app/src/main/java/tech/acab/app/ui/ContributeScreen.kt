@@ -98,7 +98,8 @@ fun ContributeContent(ble: AcabBleManager, vm: ContributionViewModel) {
     // options are plain-language device classes, including "Unknown" so an unclassifiable
     // sighting is still contributable - those are the most valuable captures. Kept identical to
     // the iOS composer's list.
-    val kinds = listOf("ALPR camera", "Body camera", "Mobile surveillance trailer", "Drone", "Unknown")
+    val kinds = listOf("ALPR camera", "Body camera", "Mobile surveillance trailer", "Drone",
+        "Smart glasses", "Tracker", "Unknown")
 
     // BOUNDED capture window. The contribution exports ONLY what was audible between Start and Stop,
     // so it is a purpose-built diagnostic capture, not the full history. nowMs ticks while capturing

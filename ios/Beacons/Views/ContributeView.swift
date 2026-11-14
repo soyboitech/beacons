@@ -40,7 +40,8 @@ struct ContributeView: View {
     // What the user VISUALLY confirmed. Their attestation, never a machine claim, so the options
     // are plain-language classes including "unknown" - an unclassifiable sighting is still worth
     // contributing, often the most valuable kind.
-    private let kinds = ["ALPR camera", "Body camera", "Mobile surveillance trailer", "Drone", "Unknown"]
+    private let kinds = ["ALPR camera", "Body camera", "Mobile surveillance trailer", "Drone",
+                         "Smart glasses", "Tracker", "Unknown"]
     @State private var kind: String?
     @State private var makerModel = ""
     @State private var photoItem: PhotosPickerItem?
