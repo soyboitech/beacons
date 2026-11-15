@@ -299,11 +299,14 @@ data class Detection(
     val wifiChannel: Int? = null,
 ) {
     /** Stable identity. Drones key on UAS-ID, which survives MAC rotation (same as the
-     *  firmware's dedup key); everything else uses type + mac. Computed once at construction
+     *  firmware's dedup key). A body cam keys on [rid] too when the board sends one: the cam's
+     *  serial, sent only off Axon's blocks, where several cams share one fixed address
+     *  (ble-protocol.md, `id`). Everything else uses type + mac. Computed once at construction
      *  (a plain val, not a getter, and NOT a constructor param so it stays out of equals/copy)
-     *  so the hot ~3 Hz feed scans don't reallocate this string on every id access. */
+     *  so the hot ~3 Hz feed scans don't reallocate this string on every id access.
+     *  TWIN: iOS Detection.id. */
     val id: String =
-        if (type == DeviceType.DRONE && !rid.isNullOrEmpty()) "${type.raw}:$rid"
+        if ((type == DeviceType.DRONE || type == DeviceType.BODY_CAM) && !rid.isNullOrEmpty()) "${type.raw}:$rid"
         else "${type.raw}:${mac.lowercase()}"
 
     /** A short "as of" string for the age of the fix behind the row's coordinate (live rows

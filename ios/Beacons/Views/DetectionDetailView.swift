@@ -1056,7 +1056,7 @@ struct DetectionDetailView: View {
         timeRow("First seen", ble.firstSeenDate(for: d.id))
         timeRow("Last seen", ble.lastSeenDate(for: d.id), sampleReadsNow: true)
         if let n = d.name, !n.isEmpty { idRow("Name", n) }
-        if let id = d.uasID, !id.isEmpty { idRow("UAS ID", id) }
+        if let id = d.uasID, !id.isEmpty { idRow(d.type == .drone ? "UAS ID" : "Serial", id) }
         // No separate "Manufacturer" row: maker's step 2 IS ridManufacturer, so it now
         // renders as Maker above. Keeping both printed the same company twice, three rows
         // apart, under two different labels.

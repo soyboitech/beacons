@@ -26,8 +26,10 @@
 /// The 6-byte dedup key for a detection. Returns either `d.mac` or `scratch` (filled in), so the
 /// caller must keep `scratch` alive as long as it uses the result - or copy the bytes out, which is
 /// what the claim path does.
+/// A body cam keys on `id` for the same reason when axon_detect.cpp sets it: off Axon's blocks
+/// several cams share one fixed address, and the serial in `id` is what tells them apart.
 inline const uint8_t* acabDedupKey(const AcabDetection& d, uint8_t scratch[6]) {
-    if (d.type == ACAB_DRONE && d.id[0]) {
+    if ((d.type == ACAB_DRONE || d.type == ACAB_AXON_BODYCAM) && d.id[0]) {
         uint32_t h = 2166136261u;                  // FNV-1a over the UAS-ID
         for (const char* p = d.id; *p; ++p) { h ^= (uint8_t)*p; h *= 16777619u; }
         scratch[0] = (uint8_t)h;          scratch[1] = (uint8_t)(h >> 8);

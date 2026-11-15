@@ -361,7 +361,9 @@ struct Detection: Identifiable, Equatable {
     let offline: Bool            // json "off"; falls back to hist on decode
 
     /// Stable identity. Drones group by UAS-ID so they survive MAC rotation, matching the firmware's
-    /// dedup key. Everything else is one entry per (type, MAC).
+    /// dedup key. A body cam groups by its `id` too when the board sends one: the cam's serial, sent
+    /// only off Axon's blocks, where several cams share one fixed address (ble-protocol.md, `id`).
+    /// Everything else is one entry per (type, MAC). TWIN: Android Detection.id.
     /// STORED, not computed: `id` is read in the publish sort comparator AND the eviction filter, so a
     /// String-interpolating computed version burned ~110k allocations per publish and saturated the main
     /// thread. Computed once in init(from:); identity semantics are unchanged.
@@ -568,9 +570,10 @@ extension Detection: Codable {
         name       = try? k.decodeIfPresent(String.self, forKey: .name)
         uasID      = try? k.decodeIfPresent(String.self, forKey: .id)
         // Stored identity, computed exactly once (see `id`). Same rule as the old computed property:
-        // drones key on UAS-ID (survives MAC rotation), everything else on (type, MAC).
-        if dt == .drone, let u = uasID, !u.isEmpty { id = "\(dt.rawValue):\(u)" }
-        else                                       { id = "\(dt.rawValue):\(mac)" }
+        // drones key on UAS-ID (survives MAC rotation), body cams on the serial the board sent in
+        // the same field, everything else on (type, MAC).
+        if dt == .drone || dt == .axonBodyCam, let u = uasID, !u.isEmpty { id = "\(dt.rawValue):\(u)" }
+        else                                                             { id = "\(dt.rawValue):\(mac)" }
         detail     = try? k.decodeIfPresent(String.self, forKey: .det)
         companyId  = try? k.decodeIfPresent(Int.self, forKey: .cid)
         wifiChannel = try? k.decodeIfPresent(Int.self, forKey: .ch)

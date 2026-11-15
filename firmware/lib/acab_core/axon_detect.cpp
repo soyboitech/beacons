@@ -69,16 +69,22 @@ struct AxAdv {
     uint8_t  svc[48];  uint8_t svcLen;   // concatenated service-data / 128-bit-UUID bytes
     bool     sigSvc;                     // AD 0x16 service data under AXON_SIG_SVC_UUID, with a payload
     bool     sigCid;                     // AD 0xFF manufacturer data under AXON_SIG_COMPANY_ID, serial-shaped
+    char     serial[AXON_SIG_CID_SERIAL_LEN + 1];   // the SIG advert's serial, "" if none (see below)
 };
+
+// AXON_SIG_CID_SERIAL_LEN uppercase letters and digits. Every serial either SIG advert has carried
+// is this shape: after 0x02 in 0x034D, and as the last bytes of the 0xFE6B payload.
+static bool axonSerialChars(const uint8_t* p) {
+    for (size_t k = 0; k < AXON_SIG_CID_SERIAL_LEN; k++)
+        if (!((p[k] >= '0' && p[k] <= '9') || (p[k] >= 'A' && p[k] <= 'Z'))) return false;
+    return true;
+}
 
 // The 0x034D payload shape (AXON_SIG_CID_SERIAL_LEN in axon_signatures.h): 0x02, then a serial of
 // uppercase letters and digits. p points at the first payload byte (data + 2); the caller, parseAdv,
 // checks dataLen >= 2 + 1 + AXON_SIG_CID_SERIAL_LEN first, so every byte read here is inside the AD.
 static bool axonCidSerial(const uint8_t* p) {
-    if (p[0] != 0x02) return false;
-    for (size_t k = 1; k <= AXON_SIG_CID_SERIAL_LEN; k++)
-        if (!((p[k] >= '0' && p[k] <= '9') || (p[k] >= 'A' && p[k] <= 'Z'))) return false;
-    return true;
+    return p[0] == 0x02 && axonSerialChars(p + 1);
 }
 
 static void parseAdv(const uint8_t* adv, size_t len, AxAdv* f) {
@@ -104,12 +110,19 @@ static void parseAdv(const uint8_t* adv, size_t len, AxAdv* f) {
             // Axon's SIG service UUID, little-endian, then at least one payload byte. Read from the
             // AD itself, not from svc[], so a full buffer cannot hide it.
             if (adType == 0x16 && dataLen >= 3 &&
-                data[0] == (AXON_SIG_SVC_UUID & 0xFF) && data[1] == (AXON_SIG_SVC_UUID >> 8))
+                data[0] == (AXON_SIG_SVC_UUID & 0xFF) && data[1] == (AXON_SIG_SVC_UUID >> 8)) {
                 f->sigSvc = true;
+                // Every captured 0xFE6B payload (23 bytes, "D01A" and "X7" forms alike) ends in
+                // its serial. Optional: a payload without one still matches, it just names no unit.
+                if (dataLen >= 2 + AXON_SIG_CID_SERIAL_LEN && !f->serial[0] &&
+                    axonSerialChars(data + dataLen - AXON_SIG_CID_SERIAL_LEN))
+                    memcpy(f->serial, data + dataLen - AXON_SIG_CID_SERIAL_LEN, AXON_SIG_CID_SERIAL_LEN);
+            }
         } else if (adType == 0xFF && dataLen >= 2 + 1 + AXON_SIG_CID_SERIAL_LEN &&
                    data[0] == (AXON_SIG_COMPANY_ID & 0xFF) && data[1] == (AXON_SIG_COMPANY_ID >> 8) &&
                    axonCidSerial(data + 2)) {
             f->sigCid = true;   // Axon's SIG company ID, little-endian, then the serial shape
+            if (!f->serial[0]) memcpy(f->serial, data + 3, AXON_SIG_CID_SERIAL_LEN);
         }
         i += 1 + adLen;
     }
@@ -179,6 +192,13 @@ bool axonClassifyBLE(const uint8_t mac[6], const uint8_t* adv, size_t advLen,
         out->method = f.sigSvc ? M_SERVICE_DATA : M_MFG_ID;
         out->confidence = 75;
         snprintf(out->detail, sizeof(out->detail), "Axon Bluetooth ID");
+        // Off the known blocks the address is not an identity: one fixed private address carried
+        // six different "X7" serials, four of them within 40 minutes (axon_signatures.h). So the
+        // serial goes in `id`, which the dedup key (dedup_key.h) and both apps' row identity use,
+        // the same path a drone's UAS ID takes. NOT on a known block, where the MAC already names
+        // one unit and a cam can alternate a tagged advert (no serial) with this one
+        // (oct012026.log): keyed by serial there, one cam would become two rows.
+        if (ouiHit == 0 && f.serial[0]) memcpy(out->id, f.serial, sizeof(f.serial));
     } else if (sigHit) {
         // Axon loose match: OUI only (could be any Axon product). Weaker; the
         // OUI table only matches public MACs, so acabApplyDurability leaves it as-is.

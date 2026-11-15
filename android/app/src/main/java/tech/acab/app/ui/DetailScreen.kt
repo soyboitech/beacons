@@ -557,7 +557,9 @@ fun DetailScreen(
                         }
                     })
                     d.name?.takeIf { it.isNotEmpty() }?.let { add("Name" to it) }
-                    d.rid?.takeIf { it.isNotEmpty() }?.let { add("UAS ID" to it) }
+                    d.rid?.takeIf { it.isNotEmpty() }?.let {
+                        add((if (d.type == DeviceType.DRONE) "UAS ID" else "Serial") to it)
+                    }
                     // No separate "Manufacturer" row: maker's step 2 IS ridManufacturer, so it
                     // now renders as Maker above. Keeping both printed the same company twice,
                     // rows apart, under two different labels.

@@ -14,6 +14,7 @@
 // asserted as-is and flagged with a CONCERN comment, never "corrected" here.
 #include "axon_detect.h"
 #include "axon_signatures.h"
+#include "dedup_key.h"     // the serial in `id` is only worth carrying if the dedup key reads it
 #include <Preferences.h>   // wipeAll(): the stub stores for real now, so "no saved value" must be made true
 #include <cstdio>
 #include <cstring>
@@ -169,7 +170,8 @@ int main() {
       bool h = runBLE(MAC_AXON_FIELD, a);
       chk("real FE6B advert on the field block -> SIG ID beats the OUI", h, true,
           d.confidence, 75, d.detail, "Axon Bluetooth ID");
-      chkInt("  ^ method is M_SERVICE_DATA, not M_OUI", d.method, M_SERVICE_DATA); }
+      chkInt("  ^ method is M_SERVICE_DATA, not M_OUI", d.method, M_SERVICE_DATA);
+      chkInt("  ^ on a known block no id: the MAC is the identity", d.id[0] == 0, 1); }
     // ...and the same advert on a MAC in no table now classifies too: the SIG number rides in the
     // payload, so it needs no OUI. Before 2026-10-20 this case asserted NO hit.
     { std::vector<uint8_t> a;
@@ -179,7 +181,8 @@ int main() {
       for (size_t i = 0; i < sizeof(sd); i++) a.push_back(sd[i]);
       bool h = runBLE(MAC_PHONE, a);
       chk("  ^ same advert on a foreign MAC -> hit on the SIG ID alone", h, true,
-          d.confidence, 75, d.detail, "Axon Bluetooth ID"); }
+          d.confidence, 75, d.detail, "Axon Bluetooth ID");
+      chkInt("  ^ off the blocks the serial is the id (D01AT522D)", strcmp(d.id, "D01AT522D") == 0, 1); }
     { std::vector<uint8_t> a; addName(a, "AXON BODY 3");
       // CONCERN (asserted as-is): the advertised name is NOT a match source in the shipped
       // signature, so an Axon-branded name on a foreign MAC is invisible. Deliberate: names are
@@ -249,7 +252,31 @@ int main() {
           d.confidence, 75, d.detail, "Axon Bluetooth ID");
       chkInt("  ^ method is M_SERVICE_DATA", d.method, M_SERVICE_DATA);
       chkInt("  ^ type is ACAB_AXON_BODYCAM", d.type, ACAB_AXON_BODYCAM);
-      chkInt("  ^ source is SRC_BLE", d.src, SRC_BLE); }
+      chkInt("  ^ source is SRC_BLE", d.src, SRC_BLE);
+      chkInt("  ^ id is the serial X70542CTN", strcmp(d.id, "X70542CTN") == 0, 1); }
+    // nov142026.log: four X7 cams shared that one private address. Two serials on one MAC must be
+    // two dedup entries, and one serial must stay one, or the cams merge (or one cam splits).
+    { auto keyFor = [&](const char* serial, uint8_t out[6]) {
+          uint8_t sd[sizeof(X7_SD)]; memcpy(sd, X7_SD, sizeof(sd));
+          memcpy(sd + sizeof(sd) - AXON_SIG_CID_SERIAL_LEN, serial, AXON_SIG_CID_SERIAL_LEN);
+          std::vector<uint8_t> a; addAd(a, 0x16, sd, sizeof(sd));
+          bool h = runBLE(MAC_NRPA, a);
+          uint8_t scratch[6]; memcpy(out, acabDedupKey(d, scratch), 6);
+          return h;
+      };
+      uint8_t k1[6], k2[6], k3[6];
+      bool h = keyFor("X705F22R5", k1) && keyFor("X705F22QW", k2) && keyFor("X705F22R5", k3);
+      chkInt("two serials on one shared address -> two dedup keys", h && memcmp(k1, k2, 6) != 0, 1);
+      chkInt("the same serial again -> the same dedup key", h && memcmp(k1, k3, 6) == 0, 1);
+      chkInt("  ^ and neither key is the shared MAC", memcmp(k1, MAC_NRPA, 6) != 0, 1); }
+    // A payload whose last bytes are not serial-shaped still matches (the rule never needed a
+    // serial); it just names no unit, so it keys on the MAC as before.
+    { uint8_t sd[sizeof(X7_SD)]; memcpy(sd, X7_SD, sizeof(sd)); sd[sizeof(sd) - 1] = 'n';
+      std::vector<uint8_t> a; addAd(a, 0x16, sd, sizeof(sd));
+      bool h = runBLE(MAC_NRPA, a);
+      chk("FE6B with a lowercase serial tail -> still a hit at 75", h, true,
+          d.confidence, 75, d.detail, "Axon Bluetooth ID");
+      chkInt("  ^ but no id", d.id[0] == 0, 1); }
     // aug-9-drive.log: the 0x034D device off the Axon blocks. Its payload starts with the device's
     // own address (replaced here by the synthetic one; every other byte is as captured), not the
     // serial shape AXON_SIG_CID_SERIAL_LEN asks for, so since 2026-10-21 it does NOT match.
@@ -273,11 +300,13 @@ int main() {
       bool h = runBLE(MAC_AXON, a);
       chk("real X8 0x034D advert on 00:25:DF -> \"Axon Bluetooth ID\" at 75", h, true,
           d.confidence, 75, d.detail, "Axon Bluetooth ID");
-      chkInt("  ^ method is M_MFG_ID, not M_OUI", d.method, M_MFG_ID); }
+      chkInt("  ^ method is M_MFG_ID, not M_OUI", d.method, M_MFG_ID);
+      chkInt("  ^ on 00:25:DF no id: the MAC is the identity", d.id[0] == 0, 1); }
     { std::vector<uint8_t> a; addMfg(a, 0x034D, X8_TAIL, sizeof(X8_TAIL));
       bool h = runBLE(MAC_RSTATIC, a);
       chk("same X8 payload on a random-static address -> hit at 75", h, true,
-          d.confidence, 75, d.detail, "Axon Bluetooth ID"); }
+          d.confidence, 75, d.detail, "Axon Bluetooth ID");
+      chkInt("  ^ id is the serial X870054FW", strcmp(d.id, "X870054FW") == 0, 1); }
     // The shape, edge by edge, off the Axon blocks (so no OUI can rescue a miss). Each case changes
     // the X8 payload in one place (one byte, its length, or the serial's characters).
     auto cidHits = [&](std::vector<uint8_t> tail) {

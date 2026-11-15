@@ -1009,7 +1009,13 @@ and `AXON_SIG_COMPANY_ID` in `axon_signatures.h`; matched in `axonClassifyBLE`.
   a fixed one that many units send from, not one device changing its serial: six `X7` serials on it
   so far. The rule matches the service data, never the address, so it catches every unit, but
   anything keyed by MAC (the app's Log, its CSV export) shows them all as one row: four cams on
-  2026-11-14 became one Body Camera row with 19 sightings. The same capture adds three on-block
+  2026-11-14 became one Body Camera row with 19 sightings. Fixed in the firmware after 2.2.3 and
+  the matching apps: off the known blocks the board sends the serial in `id` (ble-protocol.md), its
+  dedup keys on it, and both apps key the row on it as they do a drone's UAS ID, so each cam gets
+  its own row, titled by its serial (and the CSV's `uas_id` column carries it). On a known block
+  the MAC stays the key, because a cam there can alternate a tagged advert with no serial. Ceiling:
+  the dual-radio board's nRF still forwards that shared address once per window (`nrf_dedup.h`),
+  so a cam whose advert loses the window to another's is missed until the next one. The same capture adds three on-block
   `0x034D` devices on `00:25:DF:BD:xx` (`X8700K0PT`, `X8700K12C`, `X8700K12V`), all serial-shaped.
 - **It is on body cams.** One `D8:1F:65` device in `oct012026.log` alternated a `0xFE6B` advert
   with a `BWCDEVICE`-tagged one, which ties the `D01A` form to a body cam. On 2026-10-21 the owner

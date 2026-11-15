@@ -119,7 +119,8 @@
 //     leading 02 01, so it is a fixed address that many units share: six X7 serials on it so far
 //     (X705F29H7 aug-9-drive.log, X70542CTN sep252026.log, X705F22R5 / X705F22QW / X705D2F9L /
 //     X705D2F7F nov142026.log). Matching is by service data, never by address, so the rule catches
-//     every one; a log keyed by MAC still shows them as ONE row.
+//     every one. Off the known blocks the serial now rides in `id` (axon_detect.cpp), which the
+//     board's dedup and both apps key on, so those cams no longer merge into ONE row.
 //   0x034D: 2 distinct devices. One on 00:25:DF (drive_home_9-4.log, an "X8" serial, "X870054FW"),
 //     one on an unregistered random-static address (aug-9-drive.log). That second payload is not
 //     serial-shaped: it starts with the device's own address. The only Axon identifier near it was
