@@ -2408,6 +2408,13 @@ final class BLEManager: NSObject, ObservableObject {
     private var protectedFilesLoaded = false
     private var lastPublish = Date.distantPast     // when we last pushed to @Published
     private let publishInterval: TimeInterval = 0.3   // ~3 Hz ceiling on UI updates
+    // Backgrounded, nothing is on screen, yet every publish still re-renders the mounted SwiftUI
+    // tabs (Log sections, Dashboard snapshot, Map annotations). At the Desert-mode store cap that
+    // held the main thread at 82-96% CPU, and iOS killed the app five times on 2026-11-14
+    // (cpu_resource_fatal: over 80% CPU for 60 s while Non-Frontmost). The Live Activity has its
+    // own liveNearbyRefreshInterval timer and first-sighting pushes call publishDetections()
+    // directly, so only the Log/Map/Dashboard feed and the store-cap eviction slow down here.
+    private let backgroundPublishInterval: TimeInterval = 5
     private let liveNearbyRefreshInterval: TimeInterval = 5
 
     /// What `shared` calls, so the app always runs on the standard store.
@@ -2514,6 +2521,9 @@ final class BLEManager: NSObject, ObservableObject {
         // Resume the parked connect scan when the user comes back to it.
         observe(UIApplication.willEnterForegroundNotification) { [weak self] _ in
             guard let self else { return }
+            // A backgrounded trailing publish can be up to backgroundPublishInterval away; flush it
+            // so the user never comes back to a feed seconds stale.
+            if self.publishTimer != nil { self.publishDetections() }
             // Re-read notification permission on EVERY foreground, not just at launch. A user who
             // grants it in iOS Settings mid-session would otherwise stay silently unauthorized for
             // the whole process, with green toggles over a dead feature.
@@ -4592,14 +4602,17 @@ final class BLEManager: NSObject, ObservableObject {
     /// Coalesced republish for the hot path. Publishes at most once per
     /// `publishInterval`; rapid-fire notifies in between collapse into one trailing
     /// update, so a Desert-mode firehose updates the feed a few times a second instead
-    /// of thrashing SwiftUI on every record.
+    /// of thrashing SwiftUI on every record. Backgrounded, the ceiling drops to
+    /// `backgroundPublishInterval` (see there for why).
     private func schedulePublish() {
         guard publishTimer == nil else { return }   // a trailing publish is already queued
+        let interval = UIApplication.shared.applicationState == .background
+            ? backgroundPublishInterval : publishInterval
         let elapsed = Date().timeIntervalSince(lastPublish)
-        if elapsed >= publishInterval {
+        if elapsed >= interval {
             publishDetections()
         } else {
-            publishTimer = Timer.scheduledTimer(withTimeInterval: publishInterval - elapsed,
+            publishTimer = Timer.scheduledTimer(withTimeInterval: interval - elapsed,
                                                 repeats: false) { [weak self] _ in
                 self?.publishTimer = nil
                 self?.publishDetections()
