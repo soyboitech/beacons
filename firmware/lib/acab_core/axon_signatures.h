@@ -114,14 +114,22 @@
 //     serial-shaped ASCII: a "D01A" form on the six on Axon blocks, an "X7" form on the private one.
 //     One D8:1F:65 device in oct012026.log alternated this advert with a BWCDEVICE-tagged one, which
 //     ties the "D01A" form to a body cam.
+//     2026-11-14 (nov142026.log): the "private one" (first bytes 20:70:3A) is NOT one device. Four
+//     different "X705" serials came from it within 40 minutes, each with its own 8 bytes after the
+//     leading 02 01, so it is a fixed address that many units share: six X7 serials on it so far
+//     (X705F29H7 aug-9-drive.log, X70542CTN sep252026.log, X705F22R5 / X705F22QW / X705D2F9L /
+//     X705D2F7F nov142026.log). Matching is by service data, never by address, so the rule catches
+//     every one; a log keyed by MAC still shows them as ONE row.
 //   0x034D: 2 distinct devices. One on 00:25:DF (drive_home_9-4.log, an "X8" serial, "X870054FW"),
 //     one on an unregistered random-static address (aug-9-drive.log). That second payload is not
 //     serial-shaped: it starts with the device's own address. The only Axon identifier near it was
 //     the 0xFE6B "X7" advert from the private address 147 s later; no tag or Axon OUI was heard in
 //     that log. Since 2026-10-21 it no longer matches (AXON_SIG_CID_SERIAL_LEN below).
+//     2026-11-14 (nov142026.log): three more on 00:25:DF (X8700K0PT, X8700K12C, X8700K12V), all
+//     serial-shaped, so the shape gate below holds on 4 of 4 on-block devices.
 //   No device on any other public block carried either value.
-// What this buys over the OUI path: the one device off the Axon blocks that still matches, the
-// 0xFE6B "X7" device on a private address, conf 0 before this rule and not confirmed by eye. Like
+// What this buys over the OUI path: the devices off the Axon blocks that still match, the
+// 0xFE6B "X7" units on one shared private address, conf 0 before this rule and not confirmed by eye. Like
 // the tag, it sees a device the OUI path cannot: one on a random address. On the Axon blocks it
 // changes only the detail string and the method (service data or manufacturer ID instead of OUI);
 // the confidence stays 75. 2026-10-21: a D8:1F:65 device

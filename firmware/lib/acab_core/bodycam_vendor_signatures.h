@@ -58,6 +58,11 @@
 // If this is ever promoted back to on-by-default, it needs a discriminator that separates
 // worn from mounted (a stationary repeat-sighting pattern is the obvious candidate: one row
 // in that capture logged 20 sightings from effectively one spot), not just a confidence tweak.
+//
+// FIELD 2026-11-14 (nov142026.log): the only Motorola hit, one 10:74:6F device, sent directed probe
+// requests for the SSID "MOTOTRBO" in 54 of its 225 WiFi frames, so it was a MOTOTRBO two-way
+// radio, not a camera. No earlier log has that probe. It is the first discriminator in hand for
+// telling a radio apart on these blocks; nothing reads it yet (docs/false-positives.md).
 static const uint8_t POLICE_OUI[][3] = {
     // Motorola Solutions, Inc.  (One Motorola Plaza, Holtsville NY US)
     { 0x4c, 0xcc, 0x34 },   // 4C:CC:34  reg 2012-12-30  FIELD-OBSERVED 2026-07-18 (WiFi)

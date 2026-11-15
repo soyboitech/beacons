@@ -205,7 +205,11 @@ blocks: they cover any Motorola Solutions WiFi/BLE device (two-way radios, in-ca
 body-cam docks, APs, infrastructure), NOT just ALPR, and NOT their LMR radios
 (those are 700/800 MHz, below every band this board hears). Their dominant 2.4 GHz product
 in the wild is the MOTOTRBO-class two-way radio carried by retail, school, and venue
-staff, so a hit usually is NOT a camera of any kind. As shipped, the match reports under
+staff, so a hit usually is NOT a camera of any kind. The first direct evidence: on 2026-11-14
+(`nov142026.log`) the only Motorola hit, one `10:74:6F` device (13:12 to 13:39, best -73 dBm),
+sent directed probe requests for the SSID `MOTOTRBO` in 54 of its 225 Wi-Fi frames, so it was a
+MOTOTRBO radio. No earlier log has a `MOTOTRBO` probe. A probe like that on these blocks is the
+first discriminator in hand between a radio and anything else; no rule reads it yet. As shipped, the match reports under
 the body-cam type (the apps have no separate Motorola category), with the detail string
 naming the honest source ("Motorola Solutions OUI") and confidence held at 45, below the
 apps' weak-match threshold (50), so every hit renders as amber "weak match, verify"
@@ -832,7 +836,7 @@ names Axon for the first and names nobody for the second:
   carried the `METROPOLISDEVICE` tag, which no rule matches, so the app could only say "Axon OUI".
   An OUI-only `00:25:DF` hit from a car can also be in-car or other Axon equipment.
 - **The WiFi path (`axonClassifyWiFi`, conf 65) now has eight field hits, and wherever a hit's
-  BLE side was heard too, the two were one device (on `D8:1F:65` probably: one pair).** On `00:25:DF` the WiFi address is one below
+  BLE side was heard too, the two were one device (on `D8:1F:65` probably: two pairs).** On `00:25:DF` the WiFi address is one below
   the BLE address. 2026-08-03 (own capture lvt-2026-08-03, not published): WiFi
   `00:25:DF:A3:5D:7B` four seconds after BLE `00:25:DF:A3:5D:7C`, whose advert carried the
   `BWCDEVICE` tag, so that WiFi transmitter was a body cam's. 2026-09-27, I-5 at Camp Pendleton
@@ -842,16 +846,19 @@ names Axon for the first and names nobody for the second:
   export): three WiFi hits the owner confirmed as body cams, `00:25:DF:4B:E7:93`,
   `00:25:DF:4B:FA:55` and `00:25:DF:53:23:63`, no BLE side heard. 2026-10-21: three more, in the
   record below. Count a pair once.
-- **On `D8:1F:65` the pair form is different, and it rests on one pair (provisional).** On
+- **On `D8:1F:65` the pair form is different, and it rests on two pairs (provisional).** On
   2026-10-21, BLE `D8:1F:65:04:FC:17` (tag, conf 90) and WiFi `D8:1F:65:84:FC:16` (conf 65) were
   pinned 10 m and 12 minutes apart. WiFi = (BLE - 1) + 0x800000: the same one-below step as on
   `00:25:DF`, plus the top bit of the device part. The block's structure fits it. All 20
   `D8:1F:65` BLE addresses seen so far are odd and below `D8:1F:65:06:00:00`, and both WiFi
   addresses are even with that top bit set. Of 40 WiFi x BLE combinations on the block, only this
-  pair lines up, against about 0.002 expected by chance. Count it as probably one device until a
-  capture hears both sides from one unit.
-- In every pair so far the WiFi side's best reading was stronger than its BLE twin's (by 10, 22
-  and 22 dB; the `D8:1F:65` pair's two readings were 12 minutes apart), which fits WiFi-only hits
+  pair lines up, against about 0.002 expected by chance. On 2026-11-14 (`nov142026.log`) a second
+  pair lined up the same way: BLE `D8:1F:65:05:BE:7D` (tag, conf 90, 13:12 to 13:38) and WiFi
+  `D8:1F:65:85:BE:7C` (conf 65, 13:16 to 13:31), heard over the same quarter hour. Both fit the
+  block pattern: an odd BLE address below `06:00:00`, an even WiFi address with the top bit set.
+  Count each as probably one device until a capture ties both sides to one unit.
+- In every pair so far the WiFi side's best reading was stronger than its BLE twin's (by 10, 22,
+  22 and 14 dB; the first `D8:1F:65` pair's two readings were 12 minutes apart), which fits WiFi-only hits
   (2026-10-04, two of 2026-10-21) being common. So WiFi is not only docks,
   terminals and Fleet: body cams transmit on it. The 65 stays, because eight hits do not say how
   often a WiFi Axon hit is fixed station gear.
@@ -996,12 +1003,20 @@ and `AXON_SIG_COMPANY_ID` in `axon_signatures.h`; matched in `axonClassifyBLE`.
   The other is on an unregistered random-static address (`aug-9-drive.log`), and its payload is not
   serial-shaped: it starts with the device's own address. No device on any other public block
   carried either value.
+- **The private address is shared, not one device (2026-11-14, `nov142026.log`).** Four more `X7`
+  serials came from `20:70:3A:01:1F:AC` within 40 minutes (`X705F22R5`, `X705F22QW`, `X705D2F9L`,
+  `X705D2F7F`), interleaved, each with its own 8 bytes after the leading `02 01`. So the address is
+  a fixed one that many units send from, not one device changing its serial: six `X7` serials on it
+  so far. The rule matches the service data, never the address, so it catches every unit, but
+  anything keyed by MAC (the app's Log, its CSV export) shows them all as one row: four cams on
+  2026-11-14 became one Body Camera row with 19 sightings. The same capture adds three on-block
+  `0x034D` devices on `00:25:DF:BD:xx` (`X8700K0PT`, `X8700K12C`, `X8700K12V`), all serial-shaped.
 - **It is on body cams.** One `D8:1F:65` device in `oct012026.log` alternated a `0xFE6B` advert
   with a `BWCDEVICE`-tagged one, which ties the `D01A` form to a body cam. On 2026-10-21 the owner
   confirmed a `D8:1F:65` device that reached the app only through this rule as one of nine body-cam
   rows (row 4 of the 2026-10-21 record above): the first eyes-on hit. The `X7` and `X8` forms are
   not tied to any product yet.
-- **What it buys.** One device the OUI path cannot see: the `0xFE6B` `X7` device on a private
+- **What it buys.** Devices the OUI path cannot see: the `0xFE6B` `X7` units on one shared private
   address, conf 0 before this rule and not confirmed by eye. On an Axon block it also names the
   stronger evidence: a device with both reports the SIG number, not "Axon OUI".
 - **`0x034D` needs its serial shape (owner decision, 2026-10-21).** The only `0x034D` evidence off

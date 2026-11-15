@@ -38,7 +38,7 @@ WiFi estate is broader than body cams (docks, evidence terminals, station gear, 
 video), so the type claim is weaker there: the OUI says "an Axon device", not necessarily a body
 cam. It has eight field hits so far (2026-10-21), six of them at scenes the owner confirmed as
 body cams. Where a hit's BLE side was heard too, the two were one device: on `00:25:DF` the WiFi
-address is one below the BLE address, and on `D8:1F:65` (one pair so far, provisional) WiFi =
+address is one below the BLE address, and on `D8:1F:65` (two pairs so far, provisional) WiFi =
 (BLE - 1) + 0x800000. In the 2026-08-03 capture the BLE side carried the `BWCDEVICE` tag, so body
 cams transmit on WiFi. Details are in the body cam section of [signatures.md](signatures.md).
 
