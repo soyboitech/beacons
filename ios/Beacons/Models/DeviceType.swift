@@ -216,7 +216,7 @@ enum DeviceType: Int, CaseIterable, Identifiable, Codable {
     /// lastLiveKind, and Android's DRIVE_CATS has no "WATCHED" either. Saying true here bought one
     /// live cost and no benefit - a first-ever starred device forced an escalated push carrying a
     /// ContentState that had not changed, spending the escalateMinGap budget a genuine ALPR or
-    /// body-cam hit arriving in the next 1.5 s then had to wait out. A star is not silent: the
+    /// body-cam hit arriving inside that gap then had to wait out. A star is not silent: the
     /// firmware gives ACAB_WATCHED its own tone and DetectionNotifier lists it as a push category.
     /// Giving it a real column instead would mean inventing a label for a user-defined bucket on a
     /// surface whose columns are board toggles, which is the decision widgetCategoryKey already

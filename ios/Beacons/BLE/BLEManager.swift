@@ -2359,9 +2359,13 @@ final class BLEManager: NSObject, ObservableObject {
     // Floor between ESCALATED (immediate, coalescer-bypassing) Live Activity pushes. Every
     // first sighting used to escalate, so a dense crowd was a sustained per-device
     // ActivityKit flood (widget re-renders, budget throttling, battery). Excess first
-    // sightings fall through to the controller's own coalescer, never dropped.
+    // sightings fall through to the controller's own coalescer, never dropped. Same 30 s as that
+    // coalescer: each push costs a full on-disk re-archive in the widget extension (see
+    // LiveActivityController.minGap), and in Desert mode first sightings of trackers alone arrive
+    // faster than any shorter floor. Detection alerts are separate (DetectionNotifier) and stay
+    // immediate.
     private var lastEscalatedPush = Date.distantPast
-    private let escalateMinGap: TimeInterval = 1.5
+    private let escalateMinGap: TimeInterval = 30
 
     // Live-feed performance. A Desert-mode firehose can fire detection notifies far
     // faster than SwiftUI can diff a list, so we (1) cap the published array at the
@@ -3505,7 +3509,8 @@ final class BLEManager: NSObject, ObservableObject {
     }
 
     /// Run only while the system surface exists. A five-second cadence means a quiet detection
-    /// disappears no later than about 50 seconds after it was last heard, while unchanged pushes
+    /// disappears from the counts no later than about 50 seconds after it was last heard (the
+    /// Live Activity shows that within LiveActivityController.minGap), while unchanged pushes
     /// are skipped entirely.
     private func startLiveNearbyRefresh() {
         guard liveNearbyTimer == nil else { return }

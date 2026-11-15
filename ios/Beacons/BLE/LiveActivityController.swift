@@ -26,7 +26,12 @@ final class LiveActivityController {
     private var retiringIDs: Set<String> = []
 
     private let stale: TimeInterval = 8 * 60   // -> "stale" if no update in 8 min (drive dropout)
-    private let minGap: TimeInterval = 1.5     // coalesce routine updates to ~1 / 1.5 s
+    // Coalesce routine updates to ~1 / 30 s. Every push makes chronod have the widget extension
+    // re-archive every Live Activity presentation to disk (~285 KB per push with the old bundled
+    // fonts), and in Desert mode nearly every recompute differs (lastLiveSeen moves), so at the old
+    // 1.5 s this dirtied 1074 MB in 94 min (BeaconsWidget.diskwrites_resource 2026-11-14; iOS
+    // allows ~1074 MB/day). Escalations have their own floor (BLEManager.escalateMinGap).
+    private let minGap: TimeInterval = 30
 
     /// Fired when the system ends or dismisses the activity out from under us (e.g. the
     /// user swiped it away), so the owner can sync its Drive-mode toggle back to off.

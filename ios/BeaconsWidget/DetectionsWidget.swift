@@ -43,8 +43,14 @@ private func localDayIndex() -> Int {
 
 // Widget-local slice of the app's Crimson theme. The extension does not compile the app
 // target's Theme.swift, so the widget target owns its own tokens (DetectionLiveActivity.swift
-// uses this enum too). Fonts are bundled into the extension (see Info.plist
-// UIAppFonts): Space Grotesk Bold for digits, JetBrains Mono Medium for kickers.
+// uses this enum too).
+//
+// SYSTEM fonts only, on purpose. Every timeline reload and Live Activity update makes WidgetKit
+// archive the rendered views (_ArchivedViewHost.archiveStates), and the archive carries each
+// non-system font as a file attachment (CodablePlatformFont -> ArchiveWriter.addAttachment), so
+// the bundled Space Grotesk + JetBrains Mono (~386 KB) were rewritten to disk on every refresh.
+// In a Desert-mode drive that was 1074 MB in 94 min (BeaconsWidget.diskwrites_resource
+// 2026-11-14, limit ~1074 MB/day). A system font is archived by name, not by data.
 enum WidgetTheme {
     static let crimson = Color(red: 0xEE / 255, green: 0x40 / 255, blue: 0x34 / 255)
     static let amber   = Color(red: 0xF2 / 255, green: 0xB5 / 255, blue: 0x3C / 255)
@@ -56,10 +62,10 @@ enum WidgetTheme {
     /// which it briefly shared, so two adjacent columns are not the same colour at a glance.
     static let teal    = Color(red: 0x6E / 255, green: 0xA8 / 255, blue: 0xE0 / 255)
 
-    /// Display face for digits: Space Grotesk Bold.
-    static func digits(_ size: CGFloat) -> Font { .custom("SpaceGrotesk-Bold", size: size) }
-    /// Data / kicker face: JetBrains Mono Medium.
-    static func mono(_ size: CGFloat) -> Font { .custom("JetBrainsMono-Medium", size: size) }
+    /// Display face for digits (the app uses Space Grotesk Bold; see the note above).
+    static func digits(_ size: CGFloat) -> Font { .system(size: size, weight: .bold) }
+    /// Data / kicker face (the app uses JetBrains Mono Medium; SF Mono is its closest system twin).
+    static func mono(_ size: CGFloat) -> Font { .system(size: size, weight: .medium, design: .monospaced) }
 }
 
 /// Best-effort symbol/tint for the last-hit label. The app writes a free-form category

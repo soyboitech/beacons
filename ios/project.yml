@@ -100,14 +100,14 @@ targets:
           - location
         UIAppFonts:
           # The connect-screen wordmark (ACABWordmark, Components.swift), restored 2026-09-26
-          # (R16). Shared with the widget, which sets its digits in it.
+          # (R16). App only: the widget extension draws in system fonts (DetectionsWidget.swift
+          # WidgetTheme says why).
           - SpaceGrotesk-Bold.ttf
-          # The Status motto only (PunkLine, Components.swift), restored 2026-09-25. App only:
-          # the widget never draws the motto, so its UIAppFonts list below leaves it out.
+          # The Status motto only (PunkLine, Components.swift), restored 2026-09-25. App only.
           - SpaceGrotesk-Medium.ttf
           # JetBrains Mono, the instrument layer (ACABTheme.telemetry): kickers, telemetry,
-          # numbers and identifiers. Medium is shared with the widget; the other three cuts
-          # are app-only (the weight map and the higher-contrast weight step reach them).
+          # numbers and identifiers. All four cuts are app-only (the weight map and the
+          # higher-contrast weight step reach them).
           - JetBrainsMono-Regular.ttf
           - JetBrainsMono-Medium.ttf
           - JetBrainsMono-SemiBold.ttf
@@ -182,10 +182,8 @@ targets:
       - path: Beacons/Shared/DriveModeIntents.swift
       # Shared so the hosted BeaconsTests suite can pin the widget's neutral empty state.
       - path: Beacons/Shared/WidgetEmptyState.swift
-      # Brand fonts for the Live Activity surfaces (Space Grotesk digits, JetBrains
-      # Mono kickers). Same TTFs the app bundles; declared in UIAppFonts below.
-      - path: Beacons/Resources/Fonts/SpaceGrotesk-Bold.ttf
-      - path: Beacons/Resources/Fonts/JetBrainsMono-Medium.ttf
+      # No bundled fonts here: WidgetKit copies every custom font into each view archive it
+      # writes, which dirtied ~1 GB in a 94-minute drive. See WidgetTheme in DetectionsWidget.swift.
     # Same App Group as the app target, so the widget can read the shared detection summary.
     entitlements:
       path: BeaconsWidget/BeaconsWidget.entitlements
@@ -200,9 +198,6 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
-        UIAppFonts:
-          - SpaceGrotesk-Bold.ttf
-          - JetBrainsMono-Medium.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tech.beacons.app.widget
