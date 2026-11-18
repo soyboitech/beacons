@@ -113,6 +113,7 @@ static const KeyBudget BUDGET[] = {
     { "drone",     5, ALWAYS,  "bool" },
     { "droui",     5, ALWAYS,  "bool" },
     { "ncam",      5, ALWAYS,  "bool" },
+    { "focus",     5, ALWAYS,  "bool; presence is the finder-focus capability" },
     { "buzzer",    5, ALWAYS,  "bool" },
     { "vol",       3, ALWAYS,  "alertsVolume() is uint8_t" },
     { "psnd",      5, ALWAYS,  "bool" },

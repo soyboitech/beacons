@@ -1,16 +1,19 @@
 import Combine
 import SwiftUI
 
-/// Full-screen hot/cold view for walking a tracker down, opened from the dossier's SIGNAL panel
-/// ("Find it"). The live dBm is big enough to read at arm's length, the dial pulls the dot toward
-/// the middle as the signal strengthens, the history line is the dossier's own fixed-scale
-/// Sparkline, and the screen stays awake while it is open (auto-lock mid-search was the reason to
-/// leave the dossier for this). Signal strength only: nothing here claims a direction.
+/// Full-screen hot/cold view for walking a tracker or a network camera down, opened from the
+/// dossier's SIGNAL panel ("Find it"). The live dBm is big enough to read at arm's length, the dial
+/// pulls the dot toward the middle as the signal strengthens, the history line is the dossier's
+/// own fixed-scale Sparkline, and the screen stays awake while it is open (auto-lock mid-search was
+/// the reason to leave the dossier for this). Signal strength only: nothing here claims a direction.
 ///
-/// TRACKERS ONLY, on purpose. The board delivers every tracker sighting, so the number moves as
-/// you walk. A network camera is a firehose row: acab_scanner.cpp drops its repeat sightings
-/// inside the 60 s dedup window, so a streaming camera reaches the app once and this readout would
-/// freeze. Cameras need a firmware change before they get a Find button.
+/// The board delivers every tracker sighting, so a tracker's number moves as you walk. A network
+/// camera is a firehose row whose repeats the board drops, so for a camera this view holds the
+/// board's finder focus ({"focus"}, ble-protocol.md *Finder focus*) while it is open, and the
+/// SIGNAL panel offers it only on a board that reports one (BLEManager.finderFocusSupported). For
+/// its first ~12 s a camera's number moves in bursts while the board's Wi-Fi hop learns its
+/// channel; then the board holds Wi-Fi on that channel and the number steadies. finderCameraNote
+/// tells the user what that hold costs.
 /// TWIN: android DetailScreen.kt `FinderScreen`.
 struct FinderView: View {
     let detection: Detection
@@ -92,6 +95,11 @@ struct FinderView: View {
                 Text(finderHint)
                     .font(ACABTheme.font(.callout)).foregroundStyle(ACABTheme.dim)
                     .fixedSize(horizontal: false, vertical: true)
+                if d.type == .networkCamera {
+                    Text(finderCameraNote)
+                        .font(ACABTheme.font(.callout)).foregroundStyle(ACABTheme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(20)
         }
@@ -99,12 +107,26 @@ struct FinderView: View {
         .onReceive(tick) { now = $0 }
         .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
         .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        // A camera's focus: re-sent every 10 s because the board forgets it 30 s after the last
+        // write, and cleared by the same task as it ends, so no late re-send can follow the clear.
+        .task {
+            guard detection.type == .networkCamera else { return }
+            defer { ble.setFinderFocus(nil) }
+            while !Task.isCancelled {
+                ble.setFinderFocus(detection.mac)
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
     }
 }
 
 /// The finder's one instruction. The beacon, not the phone, measures the signal, so walking the
 /// phone around on its own changes nothing. TWIN: android DetailScreen.kt `FINDER_HINT`.
 let finderHint = "Carry the beacon as you walk. It hears the signal, not your phone. The number climbs toward 0 as you get closer."
+
+/// A camera hunt holds the beacon's Wi-Fi on that camera's channel (ble-protocol.md *Finder focus*),
+/// so it hears no other Wi-Fi meanwhile. TWIN: android DetailScreen.kt `FINDER_CAMERA_NOTE`.
+let finderCameraNote = "After a few seconds the beacon listens only to the Wi-Fi channel this camera uses, until you close this. Bluetooth detection carries on."
 
 /// Rings with the device's dot nearer the middle the stronger it reads, on the dossier graph's
 /// fixed scale (signalGraphFraction). The dot's angle is fixed: the beacon hears strength only,

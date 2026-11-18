@@ -28,6 +28,7 @@
 #include "sink_claim.h"   // acabClaimRollbackAllowed: the ABA-safe rollback decision
 #include "dedup_key.h"    // acabDedupKey: ONE derivation, shared with the host tests
 #include "dedup_evict.h"  // acabDedupEvictRank: eviction tenure tiers (pure, host-tested)
+#include "focus_gate.h"   // finder focus: one device's repeats past the firehose gate (pure, host-tested)
 #include "acab_ble_service.h"
 #ifdef ACAB_CAPTURE_BUILD
 #include "alpr_candidates.h"  // exact-width registered-prefix watchlist; never a classifier
@@ -44,6 +45,7 @@
 #include <WiFi.h>
 #include "soc/soc_caps.h"      // SOC_WIFI_SUPPORT_5G gates the dual-band hop
 #include <esp_wifi.h>
+#include <esp_timer.h>   // the finder focus deadline (focus_gate.h) is on the 64-bit clock
 #include <NimBLEDevice.h>
 #if __has_include(<NimBLECppVersion.h>)
 #include <NimBLECppVersion.h>   // NimBLE 2.x only (env:beacon-c5); defines NIMBLE_CPP_VERSION_MAJOR
@@ -539,6 +541,51 @@ static bool desertNotifyAllowed(bool isNew, uint32_t now) {
     return allow;
 }
 
+// The finder's focused device (focus_gate.h): its REPEAT sightings pass the firehose gate above at
+// a capped rate, and its Wi-Fi channel pins the hop (wifiHopTask). gFocus is guarded by gDesertMux;
+// gFocusOn is the unlocked hint that keeps the lock off the per-frame path while no finder is open,
+// the same shape as isWatched's count test.
+static AcabFocus     gFocus{};
+static volatile bool gFocusOn = false;
+
+static bool focusNotifyAllowed(const AcabDetection& d) {
+    if (!gFocusOn) return false;
+    const uint64_t nowUs = (uint64_t)esp_timer_get_time();
+    portENTER_CRITICAL(&gDesertMux);
+    const bool allow = acabFocusAdmit(gFocus, d.mac, d.channel, d.rssi, nowUs);
+    gFocusOn = gFocus.untilUs != 0;   // a timed-out focus cleared itself in acabFocusAdmit
+    portEXIT_CRITICAL(&gDesertMux);
+    return allow;
+}
+
+// The channel wifiHopTask should sit on for the focus, or 0 to keep hopping (acabFocusPinChannel).
+static uint8_t focusPinChannel() {
+    if (!gFocusOn) return 0;
+    const uint64_t nowUs = (uint64_t)esp_timer_get_time();
+    portENTER_CRITICAL(&gDesertMux);
+    const uint8_t ch = acabFocusPinChannel(gFocus, nowUs);
+    gFocusOn = gFocus.untilUs != 0;
+    portEXIT_CRITICAL(&gDesertMux);
+    return ch;
+}
+
+void acabScannerSetFocus(const uint8_t mac[6]) {
+    const uint64_t nowUs = (uint64_t)esp_timer_get_time();
+    portENTER_CRITICAL(&gDesertMux);
+    acabFocusSet(gFocus, mac, nowUs);
+    gFocusOn = gFocus.untilUs != 0;
+    portEXIT_CRITICAL(&gDesertMux);
+}
+
+bool acabScannerFocusActive() {
+    const uint64_t nowUs = (uint64_t)esp_timer_get_time();
+    portENTER_CRITICAL(&gDesertMux);
+    const bool on = acabFocusLive(gFocus, nowUs);
+    gFocusOn = on;
+    portEXIT_CRITICAL(&gDesertMux);
+    return on;
+}
+
 // Where both radios converge.
 static void handleDetection(AcabDetection& d) {
     // Watchlist beats the ignore drop for the synthesized ACAB_WATCHED path: a starred
@@ -719,8 +766,14 @@ static void handleDetection(AcabDetection& d) {
     // A netcam loses nothing by it, since its OUI and vendor label are identical on every frame,
     // and the dedup window still lets it refresh (so the closest-approach pin keeps improving).
     // Buffering is deliberately NOT gated: a throttled netcam still records to the offline log.
+    // The one exception is the finder's focused MAC ({"focus"}, focus_gate.h): its repeats get
+    // through at ACAB_FOCUS_MIN_GAP_US, as new:false rows, so they stay silent (alertsSignal), print
+    // nothing and never reach the mesh. The new edge still goes through the shared bucket first.
+    // The focus verdict is taken on EVERY firehose sighting, ahead of the short circuit, because each
+    // one also feeds the focus's channel pin.
     bool firehose = (d.type == ACAB_NEARBY_DEVICE || d.type == ACAB_NETCAM);
-    bool deliver = !(firehose && !desertNotifyAllowed(isNew, now));
+    const bool focused = firehose && focusNotifyAllowed(d);
+    bool deliver = !firehose || desertNotifyAllowed(isNew, now) || focused;
 
     // Hand off to the sink task: it (not this radio path) does the det_log flash write
     // (PERF-2) and calls the firmware sink. Only queue when there is something to do.
@@ -1726,6 +1779,18 @@ static const uint8_t WIFI_HOP_SEQ_5G[] = { 36, 40, 44, 48, 149, 153, 157, 161, 1
 static volatile bool gWifi5 = true;
 #endif
 
+// The finder focus learns its camera's channel for ACAB_FOCUS_LEARN_US before the hop sits on it
+// (focus_gate.h), so the window must span one whole sweep, or the pin could commit before the hop
+// had visited the camera's own channel. One second of margin for the channel-switch overhead.
+#if SOC_WIFI_SUPPORT_5G
+static_assert(ACAB_FOCUS_LEARN_US >= 1000ULL * WIFI_HOP_INTERVAL_MS *
+                  (WIFI_HOP_SEQ_LEN * ACAB_WIFI_5G_EVERY + sizeof(WIFI_HOP_SEQ_5G)) + 1000000ULL,
+              "raise ACAB_FOCUS_LEARN_US (focus_gate.h) to cover one Wi-Fi sweep");
+#else
+static_assert(ACAB_FOCUS_LEARN_US >= 1000ULL * WIFI_HOP_INTERVAL_MS * WIFI_HOP_SEQ_LEN + 1000000ULL,
+              "raise ACAB_FOCUS_LEARN_US (focus_gate.h) to cover one Wi-Fi sweep");
+#endif
+
 // WiFi eco: seconds of promiscuous-OFF sleep inserted after each full channel sweep. 0 = off
 // (continuous). Only 0/3/7/15 are offered; the setter snaps a stray value to the ladder so a bad
 // write can't make a weird duty cycle. See the header for the tradeoff.
@@ -1764,7 +1829,17 @@ static void restoreWifiEco() {
 
 static void wifiHopTask(void*) {
     int idx = 0;
+    uint8_t pinned = 0;   // the channel a finder focus holds the hop on; 0 = hopping
     for (;;) {
+        // Finder focus (focus_gate.h): once the focused camera's strongest channel is learned, sit on
+        // it until the focus ends. The whole Wi-Fi receiver stays there, so nothing on any other
+        // channel is heard meanwhile; BLE is untouched. Hopping resumes where it left off.
+        if (const uint8_t pin = focusPinChannel()) {
+            if (pin != pinned) { esp_wifi_set_channel(pin, WIFI_SECOND_CHAN_NONE); pinned = pin; }
+            vTaskDelay(pdMS_TO_TICKS(WIFI_HOP_INTERVAL_MS));
+            continue;
+        }
+        pinned = 0;
         esp_wifi_set_channel(WIFI_HOP_SEQ[idx], WIFI_SECOND_CHAN_NONE);
         idx++;
         if (idx >= WIFI_HOP_SEQ_LEN) {
@@ -1796,14 +1871,16 @@ static void wifiHopTask(void*) {
 #else
             int eco = gWifiEcoSec;
 #endif
-            if (eco > 0 && gWifiEnabled) {
+            // No eco sleep while a finder focus is live: a hunt is attended and short, and its
+            // learn sweep (focus_gate.h) must not spend its window asleep.
+            if (eco > 0 && gWifiEnabled && !gFocusOn) {
                 if (gWifiModeMux) xSemaphoreTake(gWifiModeMux, portMAX_DELAY);
                 const bool shouldSleep = gWifiEnabled && gWifiEcoSec > 0;
                 if (shouldSleep) esp_wifi_set_promiscuous(false);
                 if (gWifiModeMux) xSemaphoreGive(gWifiModeMux);
                 if (!shouldSleep) continue;
                 uint32_t until = millis() + (uint32_t)eco * 1000;
-                while ((int32_t)(millis() - until) < 0 && gWifiEcoSec > 0 && gWifiEnabled)
+                while ((int32_t)(millis() - until) < 0 && gWifiEcoSec > 0 && gWifiEnabled && !gFocusOn)
                     vTaskDelay(pdMS_TO_TICKS(100));
                 // The app toggle may have run after the loop condition was last read. Holding
                 // the same mutex for the final check plus driver call makes the desired flag

@@ -6556,6 +6556,14 @@ class AcabBleManager(private val context: Context) {
     /** Startup and shutdown sounds (firmware 2.2.3+). They play even while alerts are muted or
      *  Desert runs; off silences them. TWIN: iOS BLEManager.setPowerSounds. */
     fun setPowerSounds(on: Boolean) = writeConfig(JSONObject().put("psnd", on))
+    /** Point the board's finder focus at [mac], or clear it with null. The finder sends it on
+     *  open, again every 10 s (the board drops a focus 30 s after the last write), and clears it
+     *  on close; only a board whose status carries "focus" (2.2.4+) honours it. A command, not a
+     *  setting, so sample mode never sends it. TWIN: iOS BLEManager.setFinderFocus. */
+    fun setFinderFocus(mac: String?) {
+        if (_demoMode.value) return
+        writeConfig(JSONObject().put("focus", mac?.lowercase() ?: ""))
+    }
     fun setVolume(v: Int, preview: Boolean = false) {
         val cfg = JSONObject().put("volume", v.coerceIn(0, 100))
         if (preview) cfg.put("beep", true)   // chirp once at the new level on release

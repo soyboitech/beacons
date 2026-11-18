@@ -952,6 +952,7 @@ class ServerCb : public NimBLEServerCallbacks {
         clearPhoneGpsShadow(!retainGpsForAwayRows);
         gIgnoreStageN = 0; gWatchStageN = 0;   // drop any half-staged chunk sequence on link drop
         gIgnoreHadContent = false; gWatchHadContent = false;
+        acabScannerSetFocus(nullptr);   // the finder's focus belongs to this link (focus_gate.h)
         // A link drop mid-update must not leave OTA stuck BUSY with the radios paused:
         // abort the session and un-quiesce so the next connect can start fresh.
         if (otaInProgress()) { otaAbort(); otaQuiesce(false); }
@@ -1255,6 +1256,22 @@ class CfgCb : public NimBLECharacteristicCallbacks {
                 if (gWatchStageN > 0) gWatchHadContent = true;
                 gWatchStageN = 0;
                 statusDirty = true;   // "wat" moved; a staging chunk above deliberately does not
+            }
+        }
+        // Finder focus: {"focus":"<mac>"} lets that one device's repeat sightings past the firehose
+        // gate at a capped rate, {"focus":""} ends it (focus_gate.h). An unparseable MAC changes
+        // nothing. Echoes only when the reported state flips, so the apps' ~10 s refresh while the
+        // finder is open costs no Status frame.
+        if (doc["focus"].is<const char*>()) {
+            const char* s = doc["focus"].as<const char*>();
+            uint8_t mac[6];
+            const bool was = acabScannerFocusActive();
+            if (!s || !s[0]) acabScannerSetFocus(nullptr);
+            else if (parseMac6(s, mac)) acabScannerSetFocus(mac);
+            const bool on = acabScannerFocusActive();
+            if (on != was) {
+                Serial.printf("[ACAB] Finder focus %s\n", on ? "on" : "off");
+                statusDirty = true;
             }
         }
         // Phone GPS from the app: where we are, stamped onto detections, and onto the mesh line on
@@ -2090,6 +2107,9 @@ void acabBleUpdateStatus() {
     doc["drone"]  = droneIsEnabled();  // drone Remote ID toggle state; absent key = true
     doc["droui"]  = droneOuiIsEnabled();  // drone vendor-OUI fallback opt-in state; absent key = false (default off)
     doc["ncam"]   = netcamIsEnabled();  // network-camera opt-in state; absent key = false (default off)
+    // Finder focus live (focus_gate.h). Sent on every frame, so PRESENCE is the capability: absent =
+    // firmware that ignores {"focus"}, and the apps keep the finder off for network cameras.
+    doc["focus"]  = acabScannerFocusActive();
     doc["buzzer"] = alertsBuzzerEnabled();
     doc["vol"]    = alertsVolume();
     // Power sounds (2.2.3+). Only a build with a buzzer sends it: absent = older firmware or no

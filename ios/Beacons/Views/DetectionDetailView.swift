@@ -298,7 +298,7 @@ struct DetectionDetailView: View {
     @State private var secondPass = false
     @State private var confirmRandomWatch = false   // R7: confirm dialog before starring a randomized MAC
     @State private var showRssiInfo = false          // tap the info dot next to SIGNAL to explain the RSSI graph
-    @State private var showFinder = false            // the full-screen tracker finder (FinderView)
+    @State private var showFinder = false            // the full-screen finder (FinderView)
     @State private var showMuteOptions = false
     @State private var muteError: String?
     @State private var identityExpanded = false
@@ -997,9 +997,9 @@ struct DetectionDetailView: View {
                     .accessibilityValue("Strong at the top, weak at the bottom")
             }
             .frame(height: min(signalGraphHeight, 160))
-            // Trackers only: FinderView says why a camera can't have it yet.
-            // TWIN: android DetailScreen.kt's "Find it" row in the signal card.
-            if d.type == .tracker {
+            // Trackers, and network cameras on a board that can hold a finder focus: FinderView
+            // says why. TWIN: android DetailScreen.kt's "Find it" row in the signal card.
+            if d.type == .tracker || (d.type == .networkCamera && ble.finderFocusSupported) {
                 Button { showFinder = true } label: {
                     Label("Find it", systemImage: "scope")
                         .font(ACABTheme.font(.body))

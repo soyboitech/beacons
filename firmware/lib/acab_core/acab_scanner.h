@@ -11,7 +11,8 @@
  *
  * De-dupes by (type, dedup key) and calls the firmware-supplied sink on EVERY sighting of
  * every category except the two per-frame firehoses (nearby device under Desert, netcam),
- * which are dropped inside the dedup window and rate-capped when new; `isNew` marks only the
+ * which are dropped inside the dedup window and rate-capped when new (the finder's focused MAC,
+ * acabScannerSetFocus, is let through at a capped rate); `isNew` marks only the
  * first sighting and each re-sighting after the dedup window, it does not gate delivery. See
  * desertNotifyAllowed and the `deliver` flag in acab_scanner.cpp. The key is the MAC for
  * everything except a Remote ID drone that broadcasts a UAS ID: drones rotate MACs across
@@ -138,6 +139,13 @@ void acabScannerSetWatchList(const uint8_t macs[][6], int count);
 
 // How many MACs are currently on the watchlist (for app reconciliation).
 uint32_t acabScannerWatchCount();
+
+// Finder focus ({"focus"} over config, focus_gate.h): mac = the one device whose REPEAT sightings
+// pass the firehose gate at a capped rate; nullptr clears it. Setting the same MAC again refreshes
+// the timeout. RAM only; the BLE service clears it on disconnect.
+void acabScannerSetFocus(const uint8_t mac[6]);
+// A focus is set and has not timed out (status "focus").
+bool acabScannerFocusActive();
 
 // Total detections emitted this session (for status/heartbeat reporting).
 uint32_t acabScannerTotalDetections();

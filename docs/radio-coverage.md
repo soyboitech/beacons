@@ -17,7 +17,9 @@ these are scheduling shares, not reception probabilities. a camera broadcasting 
 
 battery-saver eco mode inserts **3, 7, or 15 seconds** with Wi-Fi reception disabled between sweeps. zero disables that extra pause. this trades Wi-Fi coverage for runtime without pausing Bluetooth scanning. diagnostic capture builds ignore eco mode so it cannot create intentional gaps in a capture.
 
-the schedule and eco behavior are defined by `WIFI_HOP_SEQ`, `wifiHopTask`, and `acabScannerSetWifiEco` in [acab_scanner.cpp](../firmware/lib/acab_core/acab_scanner.cpp).
+while the app's finder is open on a network camera (firmware 2.2.4+), the board keeps this sweep for about 12 seconds, then holds Wi-Fi on the channel where it heard that camera strongest until the finder closes. during that time it hears no other Wi-Fi channel and eco mode is paused. Bluetooth scanning is unaffected. see *Finder focus* in [ble-protocol.md](ble-protocol.md).
+
+the schedule and eco behavior are defined by `WIFI_HOP_SEQ`, `wifiHopTask`, and `acabScannerSetWifiEco` in [acab_scanner.cpp](../firmware/lib/acab_core/acab_scanner.cpp), and the finder's hold by [focus_gate.h](../firmware/lib/acab_core/focus_gate.h).
 
 ### the 5 GHz gap (measured, open)
 
