@@ -93,6 +93,9 @@ struct DeviceStatus: Equatable {
                              // alert mute; nil = older firmware or no buzzer (Mesh-Detect), so no
                              // such switch and the toggle is hidden.
                              // TWIN: Android DeviceStatus.psnd (Models.kt)
+    let focus: Bool?         // finder focus live ("focus", 2.2.4+). nil = older firmware, which
+                             // ignores {"focus"} and drops a network camera's repeats, so the
+                             // finder stays off for cameras. TWIN: Android DeviceStatus.focus (Models.kt)
     let bufCount: Int        // detections currently buffered on the board ("buf")
     let bufferingOn: Bool    // offline buffering enabled ("bufon")
     /// The board's signature-row flood limit refused at least one row ("bufrl"), so some real
@@ -156,6 +159,7 @@ extension DeviceStatus: Decodable {
         case vol         // firmware sends "vol"; we call it `volume`
         case ledon       // onboard LED master; the board omits it when on, so absent = on
         case psnd        // power sounds switch; absent = firmware before 2.2.3, or no buzzer (Mesh-Detect)
+        case focus       // finder focus live; absent = firmware before 2.2.4
         case buf, bufon, buferr, keymis  // offline buffer state, faults and key mismatch
         case bufrl       // flood limit refused a row; the board emits it only while true
         case desert      // Desert mode (report every device)
@@ -196,6 +200,7 @@ extension DeviceStatus: Decodable {
         volume   = (try? k.decode(Int.self, forKey: .vol)) ?? 80
         ledEnabled = (try? k.decode(Bool.self, forKey: .ledon)) ?? true   // absent = on (default)
         powerSounds = try? k.decode(Bool.self, forKey: .psnd)   // DO NOT default: absent = no switch
+        focus       = try? k.decode(Bool.self, forKey: .focus)  // DO NOT default: absent = unsupported
         bufCount    = (try? k.decode(Int.self, forKey: .buf)) ?? 0
         bufferingOn = (try? k.decode(Bool.self, forKey: .bufon)) ?? false
         bufferRateLimited = (try? k.decode(Bool.self, forKey: .bufrl)) ?? false

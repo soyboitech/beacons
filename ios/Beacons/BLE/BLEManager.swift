@@ -5357,6 +5357,19 @@ final class BLEManager: NSObject, ObservableObject {
         writeConfig(["psnd": on])
     }
 
+    /// The board can hold a finder focus (Status "focus", 2.2.4+), which is what lets a network
+    /// camera's repeat sightings through. TWIN: Android AcabBleManager.finderFocusSupported.
+    var finderFocusSupported: Bool { status?.focus != nil }
+
+    /// Point the board's finder focus at `mac`, or clear it with nil. FinderView sends it on open,
+    /// again every 10 s (the board drops a focus 30 s after the last write), and clears it on close.
+    /// A command, not a setting, so sample mode never sends it. TWIN: Android
+    /// AcabBleManager.setFinderFocus.
+    func setFinderFocus(_ mac: String?) {
+        guard !demoMode else { return }
+        writeConfig(["focus": mac?.lowercased() ?? ""])
+    }
+
     /// Erase the board's stored buffer. The board restarts its record sequence from 1 after a
     /// wipe, so reset our replay cursor to 0. A stale-high cursor would skip every post-erase
     /// record on the next reconnect and the fresh buffer would be lost.

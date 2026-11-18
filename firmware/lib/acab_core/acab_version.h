@@ -27,6 +27,18 @@
 // field above 1023 is therefore un-shippable over the air: the apps compare unclamped, would keep offering
 // the update, and the board would refuse it forever. Bump the MINOR when the patch field runs out.
 //
+// 2.2.4: finder focus. The {"focus":"<mac>"} config key lets that one device's repeat sightings
+//        past the firehose gate, at most one per 250 ms, so the apps' full-screen finder can walk a
+//        network camera down. After 12 s the Wi-Fi hop parks on the channel where the device read
+//        strongest, and eco sleep is suspended, until the focus ends ({"focus":""}, a disconnect,
+//        or 30 s after the last write). Status "focus" is sent on every frame, so its presence is
+//        the capability (focus_gate.h). Body cams: an "Axon Bluetooth ID" advert that carries a
+//        serial from a MAC on no known block keys its row on the serial (`id`), so cams sharing one
+//        fixed private address get a row each. No partition, fw label, OTA receiver, signing key,
+//        BLE proto, RING_FORMAT or NVS-key change; the focus lives in RAM only. Older apps ignore
+//        "focus" and still merge those cams into one row (labelling the serial "UAS ID"), so there
+//        is no release order. nRF app unchanged (v3).
+//        beacon-board: RAM 78844 bytes (+48), flash 1035201 bytes (+1200).
 // 2.2.3: power sounds are their own setting. The boot jingle, the rev-B hold-to-start beep and the
 //        power-down motif now play through the detection-alert mute (vibrate, silent, Desert), so
 //        the owner always hears the board turn on and off; the new {"psnd":false} config key
@@ -341,7 +353,7 @@
 // 2.0.0: the Colonel Panic builds pick up the full v2 detection set the beacon board ships
 // with (offline buffer, watchlist/custom category, ignore list, refreshed OUIs, glasses).
 #ifndef ACAB_FW_VERSION
-#define ACAB_FW_VERSION "2.2.3"
+#define ACAB_FW_VERSION "2.2.4"
 #endif
 
 #endif // ACAB_VERSION_H

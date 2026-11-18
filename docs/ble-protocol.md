@@ -164,7 +164,9 @@ because a single streaming device could otherwise produce one notify per frame: 
 `ACAB_NEARBY_DEVICE` row under Desert mode and an `ACAB_NETCAM` row are dropped from the notify
 path when they are repeat sightings inside the dedup window, and new ones are capped at
 `ACAB_DESERT_MAX_NOTIFY_PER_SEC` (20 per second, one shared bucket). Offline buffering is not
-gated by that cap. See `desertNotifyAllowed` and the `deliver` flag in `acab_scanner.cpp`.
+gated by that cap. See `desertNotifyAllowed` and the `deliver` flag in `acab_scanner.cpp`. From
+2.2.4 the app's finder can lift the repeat drop for ONE MAC at a time, capped at 4 rows per second:
+see *Finder focus* below.
 
 ```json
 {"t":1,"s":0,"meth":2,"c":80,"mac":"aa:bb:cc:dd:ee:ff","rssi":-67,
@@ -298,13 +300,14 @@ Write a JSON object with any subset of keys:
 | `glasses` | enable/disable the smart/recording-glasses detector (Ray-Ban/Oakley Meta, Snap Spectacles, Vuzix; on by default). Scores three BLE payload surfaces (manufacturer-data company ID, 16-bit SIG member UUIDs, the HeyCyan service UUID) and keeps the best. See [docs/glasses.md](glasses.md) |
 | `netcam` | enable/disable the **network-camera** detector (default **off**, opt-in). Matches branded IP-camera OUIs (Hikvision/Dahua/Amcrest/Axis/Reolink/Ring/Wyze/eufy/Ezviz/Lorex/Swann/Arlo) on the host Wi-Fi and emits `t:10` at confidence 65 (or 75 for a field-validated block), detail "<Vendor> on wifi". Since 2.0.4 it ALSO matches a base-station SSID prefix ("ARLO_VMB_"/"NTGR_VMB_") on beacon/probe-response frames, emitting `t:10` with method `M_SSID` at confidence **88**, detail "Arlo base station" and the matched SSID in `name` - a self-attested match outranks any OUI inference. Since 2.2.2 it also matches a fleet dashcam SSID ("Dash-" plus exactly four digits, on any MAC) on the same frames, but only when no OUI row matched: `t:10`, method `M_SSID`, confidence 65, detail "fleet dashcam" and the SSID in `name`. Probe REQUESTS are deliberately excluded: they name the network sought, not the transmitter. Turning it on widens Wi-Fi capture to 802.11 **data** frames so a streaming camera's cleartext source MAC can be OUI-matched; off (default) keeps capture management-frame-only for zero added CPU / 2.4GHz load. Honest scope: it matches known camera BRANDS on the network (could be an NVR/doorbell/disclosed camera) and cannot find every camera - never a "hidden camera" claim |
 | `desert` | **Desert mode**: report EVERY device in range, not just known signatures (default off). See *Desert mode* below |
+| `focus` | 2.2.4+: `"aa:bb:cc:dd:ee:ff"` lets that one device's **repeat** sightings past the firehose gate at up to 4 per second while the app's full-screen finder is open, and after 12 s parks the Wi-Fi hop on the channel it was heard strongest on (no other Wi-Fi channel is heard meanwhile, and Wi-Fi eco sleep is suspended); `""` ends it. It also ends on disconnect and 30 s after the last `focus` write, so the app re-sends it about every 10 s. One MAC at a time (a new one replaces the old), an unparseable MAC changes nothing, RAM only. Status `focus` advertises support. See *Finder focus* below |
 | `buzzer` | detection/session alert audio on/off. `false` mutes detection, connect, reveal and preview sounds. From 2.2.3 it no longer mutes the three power sounds (the boot jingle, the rev-B hold-to-start acknowledgment and the shutdown cue): those follow `psnd`. On 2.2.1 and 2.2.2 `false` mutes them too, and before 2.2.1 it mutes the boot jingle only |
 | `psnd` | 2.2.3+: the power sounds on/off (default **on**): the boot jingle, the rev-B hold-to-start acknowledgment and the shutdown cue. They play through `buzzer:false`, so a board in vibrate, silent or Desert mode still sounds when it turns on or off; `false` silences them. The hold-to-start ack keeps its LED flash (governed by `led`). The boot jingle plays only on a physical start, never after an OTA restart, panic, watchdog or brownout. Persists across boots |
 | `volume` | buzzer loudness, integer `0` to `100` (`0` is silent, power sounds included) |
 | `led` | onboard status LED on/off (default **on**). `false` = "lights out": no idle heartbeat, no detection flashes, no boot sweep, for covert/stationary deploys. The idle heartbeat also never runs on a boot that parks again (bump wake, charge-while-off), whatever this flag says. Persists across boots |
 | `ble` | enable/disable the BLE detection scan. `false` stops scanning only - the GATT link to the app stays up |
 | `wifi` | enable/disable the Wi-Fi (promiscuous) detection scan |
-| `wifiEco` | Wi-Fi eco mode: integer seconds of Wi-Fi RX sleep between sweeps, `0` (off) / `3` / `7` / `15`. Battery-SKU power saver; BLE capture is untouched. The board reports the active value back in Status under the same key |
+| `wifiEco` | Wi-Fi eco mode: integer seconds of Wi-Fi RX sleep between sweeps, `0` (off) / `3` / `7` / `15`. Battery-SKU power saver; BLE capture is untouched. Suspended while a finder `focus` is live (2.2.4+). The board reports the active value back in Status under the same key |
 | `wifi5` | **the ESP32-C5 builds only** (beacon-c5 and beacon-c5-devkitc, the builds whose chip has a 5 GHz radio): `true` / `false` turns the 5 GHz pass of the Wi-Fi hop on or off. On (the default) the hop dwells once on each of 9 non-DFS 5 GHz channels (36 to 48, 149 to 165) after every `ACAB_WIFI_5G_EVERY`-th full 2.4 GHz sweep (default 1, so every sweep), which on the shared radio costs about 30% of 2.4 GHz frames and about 2% of BLE adverts; off takes effect at the next channel. Persisted (NVS namespace `acab-wifi`, key `w5`). A non-bool value is ignored. Every other build compiles the key out, so it changes nothing there. The board reports the active value back in Status under the same key |
 | `beep` | `true` plays one preview beep at the current volume (pair with `volume` to audition a level) |
 | `buffer` | enable/disable the offline detection buffer (default **off**, opt-in). Every explicit `false` removes the at-rest key from RAM/NVS and durably requests erasure of any retained core dump whose task stacks may contain the key, a decrypted row, or phone coordinates. It does **not** erase the ring records themselves; drain first. See *Offline detection buffer* below |
@@ -342,7 +345,8 @@ a write the board refuses changes nothing and so echoes nothing either. An out-o
 always refused. A bare `{"watch":[]}` without `clr` is refused only while the board has taken no
 non-empty watch push on this connection, which is what protects a stored list from an app that
 opens with an empty one; after any non-empty push the same write COMMITS an empty watchlist. Send
-`clr` when you mean to clear.
+`clr` when you mean to clear. `focus` echoes only when it flips Status `focus` between `false` and
+`true`, so the finder's 10 s refresh, and a switch from one MAC to another, echo nothing.
 
 ### Body-cam category and the Motorola sub-toggle
 
@@ -405,6 +409,48 @@ offline-buffer write, and nothing else.
   only affects features keyed on a MAC, such as the watchlist (`watch`), where a star on a
   separated tracker holds until the next rollover.
 
+### Finder focus
+
+The apps' full-screen finder shows one device's live signal so the user can walk it down. A
+tracker needs nothing from the board for that: trackers are delivered on every sighting. The two
+per-frame firehoses are not. A network camera (`t:10`) or a Desert nearby device (`t:7`) reaches
+the app only on its `new` edge: its first sighting, then again only after 60 s unheard. A camera
+that keeps streaming therefore arrives once, and the finder's number would freeze. From 2.2.4:
+
+- **`{"focus":"<mac>"}` names the device.** Its repeat sightings then pass the firehose gate, at
+  most one per 250 ms (`ACAB_FOCUS_MIN_GAP_US` in `focus_gate.h`, so at most 4 rows per second).
+  They go out as `new:false` rows, so they make no sound, print no serial line and never reach the
+  mesh. The `new` edge still goes through the shared 20 per second bucket first. Every other type
+  is already delivered on every sighting, so a focus on it changes nothing.
+- **It ends three ways:** `{"focus":""}`, a disconnect, or 30 s with no `focus` write
+  (`ACAB_FOCUS_TIMEOUT_US`, on the 64-bit microsecond clock, so it cannot come back after a
+  `millis()` wrap). The timeout is what keeps a crashed or frozen app from leaving the board
+  streaming, so both apps re-send the key about every 10 s while the finder is open and clear it
+  when the finder closes. They send it only for a network camera.
+- **It never outranks an alert.** A focused row is still a firehose row at the sink queue, so it is
+  admitted only while the queue keeps its reserve (`acabSinkAdmitsFirehose`). A Flock, drone or
+  body-cam row is never crowded out by a hunt.
+- **The Wi-Fi hop limits how often a camera is heard, so a focus pins the hop to the camera's
+  channel.** Normally the board steps through 24 channel dwells of 300 ms (a 7.2 s sweep; the
+  ESP32-C5 builds add nine 5 GHz dwells while `wifi5` is on), returning to channel 6 every other
+  step. A camera on any channel but 6 is heard on its own channel for one 300 ms dwell per sweep,
+  plus weaker readings while the board sits on a neighbouring channel, and not at all in between.
+  So for the first 12 s of a focus (`ACAB_FOCUS_LEARN_US`, one whole sweep with margin, which
+  `acab_scanner.cpp` static_asserts) the board keeps hopping and records the channel of the
+  camera's **strongest** reading. It takes the strongest, not the latest, because a 2.4 GHz
+  transmitter is also heard from neighbouring channels. Then it parks the Wi-Fi receiver on that
+  channel until the focus ends, and the readings arrive steadily, up to the 4 per second cap. A
+  refresh of the same MAC keeps the pin; a new MAC learns its own channel from scratch, and a
+  device never heard on Wi-Fi never pins.
+- **While parked, the board hears no other Wi-Fi channel.** Flock Wi-Fi, Wi-Fi Remote ID and other
+  network cameras on other channels are missed until the focus ends. Wi-Fi eco sleep is also
+  suspended for the whole focus. BLE detection carries on unchanged. The focus's three endings
+  release the pin with it, so the hop resumes on close, on disconnect, or 30 s after a crashed app's
+  last refresh.
+- **Status `focus`** is `true` while a focus is live and `false` otherwise. Firmware that accepts
+  the key sends it on every frame, so an **absent** key means older firmware, which ignores
+  `focus`. The apps enable the finder for a network camera only when the key is present.
+
 ## Status (read / notify)
 
 ```json
@@ -419,6 +465,8 @@ Every key in that frame is emitted on every Status update. The conditional keys 
 purpose: each is emitted only when it has something to say, and absent means the default.
 `psnd` (2.2.3+) is absent from this 2.0.5 frame for a different reason: only builds with a buzzer
 send it, so never Mesh-Detect, and an absent `psnd` means there is no such switch, not the default.
+`focus` (2.2.4+) is absent because a 2.0.5 board predates it: every build from 2.2.4 sends it on
+every frame.
 
 The radio ingest counters `wseen` / `bseen` and the sink-drop total `sdrop` are **not in this
 frame any more**. They left it on 2026-08-26 for the bench-only `{"diag":true}` reply, and their
@@ -459,6 +507,7 @@ a hard ceiling.
 | `tracker` | BLE item-tracker detector enabled |
 | `glasses` | smart/recording-glasses detector enabled |
 | `ncam` | network-camera detector enabled. A missing key (older firmware) is treated as off (opt-in, default off) |
+| `focus` | 2.2.4+: a finder focus is live (`true`) or not (`false`). Sent on every frame, so **absent means older firmware**, which ignores the `focus` config key and still drops a network camera's repeat sightings; both apps then keep "Find it" off for network cameras. See *Finder focus* |
 | `desert` | Desert mode enabled (reporting every device in range) |
 | `ign` | number of MACs on the board's ignore list (for app reconciliation) |
 | `wat` | number of MACs on the board's watchlist (for app reconciliation) |

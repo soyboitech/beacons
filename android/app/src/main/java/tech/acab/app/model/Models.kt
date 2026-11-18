@@ -614,6 +614,9 @@ data class DeviceStatus(
     // firmware or no buzzer (Mesh-Detect), so no such switch and the UI hides the toggle.
     // TWIN: iOS DeviceStatus.powerSounds.
     val psnd: Boolean? = null,
+    // Finder focus live ("focus", 2.2.4+). null = older firmware, which ignores {"focus"} and drops
+    // a network camera's repeats, so the finder stays off for cameras. TWIN: iOS DeviceStatus.focus.
+    val focus: Boolean? = null,
     val gps: Boolean,
     val bufCount: Int,      // records currently held in the board's offline buffer
     val bufOn: Boolean,     // whether offline buffering is enabled on the board
@@ -714,6 +717,7 @@ data class DeviceStatus(
             volume = o.optInt("vol", 80),
             ledOn = o.optBoolean("ledon", true),   // board omits it when on, so absent = on
             psnd = if (o.has("psnd")) o.optBoolean("psnd") else null,   // absent = no switch: see psnd
+            focus = if (o.has("focus")) o.optBoolean("focus") else null,   // absent = unsupported
             gps = o.optBoolean("gps", false),
             bufCount = o.optInt("buf", 0),
             bufOn = o.optBoolean("bufon", false),

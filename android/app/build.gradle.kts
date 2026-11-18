@@ -38,9 +38,10 @@ android {
         // 30 as 2.1.0 (tag android-v2.1.0), 31 as the first android-v2.1.1 APK, 32 on the unreleased
         // 2.1.1 fallback commit 83495ab (held, never uploaded), 33 as 2.2.0 (tag android-v2.2.0), 34 as
         // 2.2.1 (tag android-v2.2.1), 35 as 2.2.2 (tag android-v2.2.2), 36 as 2.2.3 (tag android-v2.2.3),
-        // 37 as 2.2.4 (tag android-v2.2.4), 38 as 2.2.5 (tag android-v2.2.5), so 2.2.6 takes 39.
-        versionCode = 39
-        versionName = "2.2.6"
+        // 37 as 2.2.4 (tag android-v2.2.4), 38 as 2.2.5 (tag android-v2.2.5), 39 as 2.2.6 (tag
+        // android-v2.2.6), so 2.2.7 takes 40.
+        versionCode = 40
+        versionName = "2.2.7"
     }
 
     signingConfigs {

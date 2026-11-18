@@ -85,6 +85,9 @@ CANARIES = {
     # 2.2.3: the power-sounds toggle's log label (acab_ble_service.cpp kToggles), which every
     # production image links with the shared BLE service.
     "2.2.3": ["Power sounds"],
+    # 2.2.4: the finder focus log line (acab_ble_service.cpp CfgCb), which every production image
+    # links with the shared BLE service.
+    "2.2.4": ["Finder focus"],
 }
 
 HERE = os.path.dirname(os.path.abspath(__file__))
