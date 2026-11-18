@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -71,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,6 +88,12 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -251,6 +259,7 @@ fun DetailScreen(
         muteRule?.let { ble.muteRuleStatus(it) }
     }
     var showRssiInfo by remember { mutableStateOf(false) }   // info button in SIGNAL explains the RSSI graph
+    var showFinder by remember { mutableStateOf(false) }     // the full-screen tracker finder (FinderScreen)
     val actionsStacked = dossierActionsStacked(LocalDensity.current.fontScale)
     // The bar title is hoisted as a String: a title lambda that captured d would be rebuilt on
     // every ~3 Hz publish (d is a new Detection each time), and the bar would recompose with it.
@@ -472,6 +481,16 @@ fun DetailScreen(
                             stale = stale,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(80.dp),
                         )
+                        // Trackers only: FinderScreen says why a camera can't have it yet.
+                        // TWIN: iOS DetectionDetailView signalPanel's "Find it" row.
+                        if (d.type == DeviceType.TRACKER) {
+                            TextButton(onClick = { showFinder = true },
+                                modifier = Modifier.padding(start = 4.dp, top = 4.dp)) {
+                                Icon(Icons.Filled.GpsFixed, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Find it")
+                            }
+                        }
                     }
                 }
                 if (showRssiInfo) {
@@ -623,6 +642,10 @@ fun DetailScreen(
         // Refused star at the cap, iOS "Watchlist full" alert word for word.
         if (showWatchlistFull) {
             WatchlistFullDialog { showWatchlistFull = false }
+        }
+
+        if (showFinder) {
+            FinderScreen(d, demo = demo, stale = stale, trend = trend, onClose = { showFinder = false })
         }
 
         if (showMuteOptions) {
@@ -2120,6 +2143,85 @@ internal const val SIGNAL_GRAPH_CEILING_DBM = -30
 internal fun signalGraphFraction(rssi: Int): Float =
     (rssi.coerceIn(SIGNAL_GRAPH_FLOOR_DBM, SIGNAL_GRAPH_CEILING_DBM) - SIGNAL_GRAPH_FLOOR_DBM).toFloat() /
         (SIGNAL_GRAPH_CEILING_DBM - SIGNAL_GRAPH_FLOOR_DBM)
+
+/** The finder's one instruction. The beacon, not the phone, measures the signal, so walking the
+ *  phone around on its own changes nothing. TWIN: iOS FinderView.swift `finderHint`. */
+internal const val FINDER_HINT =
+    "Carry the beacon as you walk. It hears the signal, not your phone. The number climbs toward 0 as you get closer."
+
+/** Full-screen hot/cold view for walking a tracker down, opened from the signal card's "Find it".
+ *  The live dBm is big enough to read at arm's length, the dial pulls the dot toward the middle as
+ *  the signal strengthens, the history is the dossier's own [SignalHistoryGraph], and the screen
+ *  stays on while it is open (auto-lock mid-search was the reason to leave the dossier for this).
+ *  Signal strength only: nothing here claims a direction.
+ *  TRACKERS ONLY: a network camera is a firehose row whose repeat sightings acab_scanner.cpp drops
+ *  inside the 60 s dedup window, so a streaming camera reaches the app once and this readout would
+ *  freeze. Cameras need a firmware change first. TWIN: iOS FinderView.swift. */
+// The dossier stays composed under the dialog, so it hands over its live row, its 1 s staleness
+// and its trend each time it recomposes; no second clock or feed collection lives here.
+@Composable
+private fun FinderScreen(d: Detection, demo: Boolean, stale: Boolean, trend: List<Int>, onClose: () -> Unit) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        val view = LocalView.current
+        DisposableEffect(Unit) {
+            view.keepScreenOn = true
+            onDispose { view.keepScreenOn = false }
+        }
+        val tone = d.type.tone()
+        val dim = MaterialTheme.colorScheme.onSurfaceVariant
+        val ink = if (stale) dim else MaterialTheme.colorScheme.onSurface
+        Column(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+                .verticalScroll(rememberScrollState()).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(12.dp).background(tone, CircleShape))
+                Spacer(Modifier.width(10.dp))
+                Text(d.type.inlineCategory, Modifier.weight(1f).semantics { heading() },
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface)
+                Text(d.sourceLabel, style = DossierLineStyle, color = dim)
+                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+            }
+            Text("${d.titleName} · ${dossierHeroSubtitle(nodeName(d.mac), d.maker ?: d.vendor, d.titleName)}",
+                style = DossierLineStyle, color = dim)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).clearAndSetSemantics {
+                    contentDescription = "Signal strength ${d.rssi} decibels relative to one milliwatt"
+                }, verticalAlignment = Alignment.Bottom) {
+                    Text("${d.rssi}", style = DossierRssiStyle.copy(fontSize = 88.sp, fontWeight = FontWeight.Bold),
+                        color = ink, maxLines = 1, softWrap = false)
+                    Spacer(Modifier.width(6.dp))
+                    Text("dBm", Modifier.padding(bottom = 14.dp), style = DossierLineStyle, color = dim)
+                }
+                FinderDial(d.rssi, tint = if (stale) dim else tone, modifier = Modifier.size(96.dp))
+            }
+            Text(dossierSignalWord(demo = demo, stale = stale), style = DossierSignalWordStyle, color = ink)
+            DossierCard {
+                SignalHistoryGraph(values = trend, currentRssi = d.rssi, tone = tone,
+                    stale = stale, modifier = Modifier.fillMaxWidth().padding(14.dp).height(140.dp))
+            }
+            Kicker(STATUS_NO_DIRECTION_CAPTION)
+            Text(FINDER_HINT, style = MaterialTheme.typography.bodyMedium, color = dim)
+        }
+    }
+}
+
+/** Rings with the device's dot nearer the middle the stronger it reads, on the graph's fixed scale
+ *  ([signalGraphFraction]). The dot's angle is fixed: the beacon hears strength only, so no angle on
+ *  this dial means anything. TWIN: iOS FinderView.swift `FinderDial`. */
+@Composable
+private fun FinderDial(rssi: Int, tint: Color, modifier: Modifier = Modifier) {
+    val ring = Acab.line
+    Canvas(modifier) {
+        val r = size.minDimension / 2
+        listOf(1f, 0.66f, 0.33f).forEach { drawCircle(ring, radius = r * it, style = Stroke(1.dp.toPx())) }
+        val dist = r * 0.85f * (1f - signalGraphFraction(rssi))
+        // Fixed 45 degrees, up and to the right.
+        drawCircle(tint, radius = 7.dp.toPx(), center = center + Offset(dist * 0.7071f, -dist * 0.7071f))
+    }
+}
 
 private fun DrawScope.drawSparkline(values: List<Int>, tone: Color, alpha: Float) {
     // Fewer than two readings draw no line, as on iOS: on a fixed scale a lone mark would read
