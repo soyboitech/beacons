@@ -278,7 +278,9 @@ extension DeviceStatus {
 // at or under its level. TWIN: android Models.kt BATTERY_ADVICE_LOW_PERCENT,
 // BATTERY_ADVICE_SOON_PERCENT, BATTERY_ADVICE_NOW_PERCENT, BATTERY_ADVICE_REARM_MARGIN and the
 // three BATTERY_ADVICE_*_MESSAGE strings, the same numbers and the same bytes
-// (check-signature-drift.py pins each pair).
+// (check-signature-drift.py pins each pair). The FAQ answer q-battlow (both faq-content.json
+// copies) and docs/app-guide.md quote the three levels, the margin and where the first stage
+// eases (its level plus the margin): change them together.
 let batteryAdviceLowPercent = 20
 let batteryAdviceSoonPercent = 10
 let batteryAdviceNowPercent = 5
