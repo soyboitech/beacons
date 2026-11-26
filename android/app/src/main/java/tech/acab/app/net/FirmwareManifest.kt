@@ -18,9 +18,10 @@ import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** The newest PUBLISHED beacon-board firmware this app was built knowing about (fw labels
- *  "beacon board" and "beacon board rev-B"). FALLBACK's two beacon entries read it, and so does
- *  the Beacon tab's update nudge for a label no manifest lists (DeviceScreen LATEST). It names
- *  the published build, which can trail the working tree's ACAB_FW_VERSION while a release is
+ *  "beacon board" and "beacon board rev-B"). FALLBACK's two beacon entries read it, and the
+ *  firmware card prints it as the LATEST KNOWN value for a label no manifest lists (DeviceScreen
+ *  LATEST); such a board is never called outdated (boardFirmwareOutdated). It names the
+ *  published build, which can trail the working tree's ACAB_FW_VERSION while a release is
  *  unpublished. The Colonel Panic builds have their own literal,
  *  [LATEST_PUBLISHED_COLONEL_FIRMWARE]. TWIN: iOS DeviceStatus.latestVersion in
  *  DeviceStatus.swift; check-signature-drift.py pins the pair. */

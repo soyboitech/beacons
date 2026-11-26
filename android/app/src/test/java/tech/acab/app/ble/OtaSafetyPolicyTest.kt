@@ -373,6 +373,23 @@ class OtaSafetyPolicyTest {
     }
 
     @Test
+    fun `a board is outdated only against a build the manifest lists for its label`() {
+        // The third row is the rule: a label with no manifest entry (listed = null) has no
+        // published build to be behind, so it is not outdated whatever the app's own constants
+        // say. On 2026-11-26 that covers "beacon c5", "beacon c5 devkitc" and a Mesh-Detect built
+        // for another channel, none of which the published manifest or FALLBACK lists.
+        // TWIN: OtaVersionGateTests.testBoardIsOutdatedOnlyAgainstABuildTheManifestListsForItsLabel
+        // (iOS), the same rows; the null-installed row is Android's alone, because iOS asks a
+        // status it already holds.
+        assertTrue(boardFirmwareOutdated("2.2.3", "2.2.4", revisionCompatible = true))
+        assertFalse(boardFirmwareOutdated("2.2.4", "2.2.4", revisionCompatible = true))
+        assertFalse(boardFirmwareOutdated("2.2.3", null, revisionCompatible = true))
+        assertFalse(boardFirmwareOutdated("2.2.3", "2.2.4", revisionCompatible = false))
+        assertFalse(boardFirmwareOutdated("ESP32", "2.2.4", revisionCompatible = true))
+        assertFalse(boardFirmwareOutdated(null, "2.2.4", revisionCompatible = true))
+    }
+
+    @Test
     fun `firmware version gate matches the complete release grammar`() {
         for (valid in listOf(
             "2", "2.0", "2.0.6", "0.0.1", "1023.1023.1023", "2.0.6-rc1",

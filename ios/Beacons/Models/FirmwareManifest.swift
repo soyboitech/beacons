@@ -147,7 +147,9 @@ final class FirmwareManifestStore: ObservableObject {
     // MARK: Accessors the UI consumes
 
     /// Latest known version for a board's fw label. Falls back to DeviceStatus.latestVersion
-    /// when the manifest doesn't list the board.
+    /// when the manifest doesn't list the board; that fallback is for display only, because
+    /// DeviceStatus.firmwareOutdated(listed:revisionCompatible:) never calls an unlisted board
+    /// outdated.
     func latestVersion(forFwLabel label: String) -> String {
         manifest.build(forFwLabel: label)?.version ?? DeviceStatus.latestVersion
     }

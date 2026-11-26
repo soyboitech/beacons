@@ -1519,6 +1519,18 @@ internal fun isFirmwareVersionOlder(installed: String, latest: String): Boolean 
     isNumericFirmwareVersion(installed) && isNumericFirmwareVersion(latest) &&
         !isFirmwareVersionAtLeast(installed, latest)
 
+/** Is the board's own firmware behind the build the manifest lists for its fw label? [listed] is
+ *  that entry's version, null when the manifest has no entry for the label. A board with no
+ *  listing is never outdated: no build is published for it to be behind, and measuring it against
+ *  the app's own LATEST_PUBLISHED_FIRMWARE would offer a version that may not exist for that
+ *  board. Both callers are in DeviceScreen: `fwOutdated`, which promotes the banner, and
+ *  FirmwareCard's `outdated`, which offers the browser flasher. [revisionCompatible] is the
+ *  belt-and-braces revision gate described at `revisionMatchesManifest` there. TWIN: iOS
+ *  DeviceStatus.firmwareOutdated(listed:revisionCompatible:); OtaSafetyPolicyTest and
+ *  OtaVersionGateTests run the same table. */
+internal fun boardFirmwareOutdated(installed: String?, listed: String?, revisionCompatible: Boolean): Boolean =
+    installed != null && listed != null && revisionCompatible && isFirmwareVersionOlder(installed, listed)
+
 /** The first firmware that applies the alert mute to the power cues too (alerts.cpp buzzerTone,
  *  2.2.1). Before it a muted board still played the shutdown motif and the rev-B hold-to-start
  *  beep, and only volume 0 silenced them, so the Alerts caption and the Desert note describe the
