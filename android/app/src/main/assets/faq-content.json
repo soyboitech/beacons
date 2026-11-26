@@ -220,6 +220,11 @@
           "id": "q-battjump",
           "q": "Why does the battery percentage jump around?",
           "a": "the battery model doesn't have a dedicated fuel-gauge chip, so it estimates charge from voltage. the radios draw power in bursts, so heavy scanning can lower the voltage and make the percentage drop a few points. it goes back up when the load eases off. lithium battery voltage also stays fairly flat through the middle of a charge, so the estimate changes faster near full and near empty.\n\nthe firmware smooths the reading, but a few percent of drift is normal. the percentage tells you whether the battery is full, half, or getting low, but it is not exact."
+        },
+        {
+          "id": "q-battlow",
+          "q": "What does the low battery notice mean?",
+          "a": "on the battery model, the app suggests charging as the battery runs down. a notice appears on the Status screen, and the battery reading on the Beacon tab turns amber. at 20% the notice says the battery is getting low. at 10% it says to charge soon, and at 5% to plug it in now.\n\nthe notice goes away while the app shows the beacon as charging. a beacon that was already on a wall charger or power bank when it started up may not show as charging, even though it is. in that case the notice stays until the level climbs.\n\nwhile the app stays connected, each stage holds until the level climbs 7 points past it, so the first notice stays until 27%. that keeps a reading that hovers around 20% from making the notice come and go.\n\nit is only a suggestion. the beacon keeps scanning as usual until the battery runs out, and then detection stops. the percentage is an estimate and can drift a few points, so treat the notices as a guide, not a countdown. you see them only while the app is connected to the beacon, and the app does not send a phone notification for them."
         }
       ]
     },

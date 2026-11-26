@@ -803,7 +803,9 @@ val DeviceStatus.bufferHealthNotices: List<BufferHealthNotice>
 // batteryAdvice(percent:charging:previous:). Numbers and sentences are identical on both sides:
 // firmware/tools/check-signature-drift.py (its battery advice rows) reads each declaration below
 // by pattern and wants exactly one match in this file, so declare each constant once and never
-// quote a declaration in a comment.
+// quote a declaration in a comment. The FAQ answer q-battlow (both faq-content.json copies) and
+// docs/app-guide.md quote the three levels, the margin and where the first stage eases (its level
+// plus the margin): change them together.
 const val BATTERY_ADVICE_LOW_PERCENT = 20
 const val BATTERY_ADVICE_SOON_PERCENT = 10
 const val BATTERY_ADVICE_NOW_PERCENT = 5
