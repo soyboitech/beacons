@@ -563,6 +563,9 @@ func mapCenterKeepingPinVisible(pin: CLLocationCoordinate2D, region: MKCoordinat
 // MapScreen.kt MAP_CONTROL_TARGET, MAP_CONTROL_MARGIN, MAP_CONTROL_SPACING and
 // MAP_CONTROLS_RESERVE. The sizes are per platform, each from its own guideline: 44pt is the HIG's
 // minimum target here; Android's 40dp small FAB pads its own target to 48dp.
+// iOS only, iPhone Duo's inner display: the pane handle at the map's leading edge
+// (MapTabView.paneHandle), with the same face. It is the one button that floats there: under
+// the system's vertical bar the other three are toolbar items (MapTabView.mapBarButtons).
 
 /// Visual diameter AND hit target of each floating Map button: the HIG's 44pt minimum.
 let mapControlSize: CGFloat = 44
@@ -597,6 +600,32 @@ let mapFloatingStackReserve: CGFloat = mapControlMargin + 2 * mapControlSize + m
 func mapLegendAccessibilityValue(open: Bool, downloading: Bool) -> String {
     let state = open ? "expanded" : "collapsed"
     return downloading ? "\(state), \(MapTabView.legendLoadingValue)" : state
+}
+
+/// Holds `MapTabView.liveCamera`, the camera of MapKit's latest report, nil until the first.
+/// A reference, not state: it is written on every camera report and nothing draws from it.
+final class MapCameraBox { var camera: MapCamera? }
+
+/// iPhone Duo's inner display: is the located pane beside the map (MapTabView.paneX)? Yes while
+/// a top-to-bottom fold splits the tab, unless the user gave the map both halves
+/// (MapTabView.paneHandle). Even then an open dossier brings the pane back, because the pane is
+/// where a dossier opens on that display (MapTabView.locatedPane). iOS only: Android has no
+/// located pane.
+func mapShowsLocatedPane(fold: Bool, fullScreen: Bool, dossierOpen: Bool) -> Bool {
+    fold && (!fullScreen || dossierOpen)
+}
+
+/// The least sideways travel, in points, for a drag off the pane handle to count as a swipe
+/// (`mapPaneHandleSwipeFlips`). It decides only drags that outrun the Button's own tap: a
+/// shorter one lands as the tap and flips the layout whichever way it went
+/// (MapTabView.paneHandle). The knob to turn if a long swipe feels stiff or twitchy.
+let mapPaneHandleSwipe: CGFloat = 24
+
+/// Does a drag of `dx` points off the pane handle flip the layout? Only the way its chevron
+/// points: toward the pane (leading, so negative) to give the map both halves, away from the
+/// screen edge to bring the pane back. A swipe the other way does nothing.
+func mapPaneHandleSwipeFlips(dx: CGFloat, paneShown: Bool) -> Bool {
+    paneShown ? dx <= -mapPaneHandleSwipe : dx >= mapPaneHandleSwipe
 }
 
 /// The legend card's height cap, as a share of the map region (`regionHeight`, from the bottom of
@@ -795,6 +824,9 @@ struct MapTabView: View {
     /// annotations, so each turns by ALPRWedge.screenDegrees to keep its true bearing.
     @State private var mapHeading: CLLocationDirection = 0
     @State private var mapPitch: Double = 0
+    /// The camera as MapKit last reported it (`MapCameraBox`), mid-gesture included. Read by
+    /// `centerOnPinKeepingZoom` and by `takeBackCamera`, never by a body.
+    @State private var liveCamera = MapCameraBox()
     @State private var span: MKCoordinateSpan = .init(latitudeDelta: 0.02, longitudeDelta: 0.02)
     @State private var region = MKCoordinateRegion(center: .init(latitude: 0, longitude: 0),
                                                    span: .init(latitudeDelta: 0.02, longitudeDelta: 0.02))
@@ -802,11 +834,12 @@ struct MapTabView: View {
     @State private var legendExpanded = false     // the legend card starts closed (not persisted)
     @State private var showMapOptions = false     // one readable sheet for display and reference layers
     /// Height of the region between the navigation bar and the tab bar, the floating scope header
-    /// included, written only by the `onGeometryChange` in `mapLayout`. Read by `legendCardCap`
+    /// included, written only by the `onGeometryChange` in `mapRegion(_:)`. Read by `legendCardCap`
     /// (with `scopeHeaderHeight` as the top inset); 0 until the first measurement.
     @State private var mapRegionHeight: CGFloat = 0
     /// Height of the floating scope header (`scopeHeader`), written only by the `onGeometryChange`
-    /// on the header in `mapLayout`. It changes with the text size and never animates, and NOTHING
+    /// on the header in `mapRegion(_:)`. It changes with the text size (and, on iPhone Duo, is 0 while
+    /// the located pane carries the header) and never animates, and NOTHING
     /// feeds it back into MapKit: the map's top safe-area inset is the header's own layout height,
     /// laid by SwiftUI (`safeAreaInset`), not this state. Read by `legendCardCap`, so the card does
     /// not climb under the header, and by the empty banner, so it centres in the visible map; 0
@@ -842,12 +875,17 @@ struct MapTabView: View {
     @State private var alprJustChecked = false    // brief window after a manual check: row shows the outcome
     @Environment(\.horizontalSizeClass) private var hSize   // T5: dossier as inspector on regular width
     /// iPhone Duo (iOS 27.1). `fold`: where the inner display's fold crosses this tab; while it
-    /// runs top to bottom, the located sightings take the leading half (`locatedPane`).
+    /// runs top to bottom, the located sightings take the leading half (`locatedPane`) unless
+    /// the map has both halves (`paneX`).
     /// `hasVerticalBar`: the system draws its bars vertically, so the floating buttons move into
     /// the toolbar (`mapBarButtons`), where it can stack them in the bar. Both stay at their
     /// defaults on every other device.
     @State private var fold = FoldLine()
     @State private var hasVerticalBar = false
+    /// iPhone Duo's inner display: the user gave the map both halves (`paneHandle`). Not
+    /// persisted, like `legendExpanded`: every launch opens on the split. Read by `paneX` and by
+    /// the selection hook in `mapPresented`; it changes nothing while no fold splits the tab.
+    @State private var mapFullScreen = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize   // accessibility sizes: one-column legend, the card's headline floor
     @Environment(\.accessibilityReduceMotion) private var reduceMotion   // the legend card opens (fade only) and the camera fits, flies and recenters without animation
 
@@ -875,6 +913,32 @@ struct MapTabView: View {
     private var historyScopeBinding: Binding<MapHistoryScope> {
         Binding(get: { historyScope }, set: { historyScopeRaw = $0.rawValue })
     }
+
+    /// The located pane's width while it is on screen (the fold's x), nil while it is not
+    /// (`mapShowsLocatedPane`). `fold.x` alone still means "a fold splits this tab": the dossier
+    /// presentation, the bar's close button and the selection ring key on that, and stay right
+    /// because a selection always brings the pane back.
+    private var paneX: CGFloat? {
+        mapShowsLocatedPane(fold: fold.x != nil, fullScreen: mapFullScreen,
+                            dossierOpen: selected != nil) ? fold.x : nil
+    }
+
+    /// The hidden pane's width while the full-screen map covers it, else 0. Leading room for the
+    /// map's centred overlays (the empty card, the bottom notices): they keep to the trailing
+    /// half, where they sit in the split, so none lies across the fold and a flip leaves them
+    /// in place.
+    private var hiddenPaneWidth: CGFloat { paneX == nil ? fold.x ?? 0 : 0 }
+
+    /// What the pane handle takes of the map's leading edge beside the fold, 0 with no fold: the
+    /// empty card starts after it. The bottom notices do not: the handle hides while the one
+    /// tall enough to reach it, the ALPR callout, is open (`paneHandleHidden`).
+    private var paneHandleFootprint: CGFloat {
+        fold.x == nil ? 0 : max(ACABTheme.pad, fold.xClearance) + mapControlSize
+    }
+
+    /// The pane handle is hidden (not removed, like the floating stack) while a card that can
+    /// reach the map's leading centre is open: the legend card, or the ALPR callout.
+    private var paneHandleHidden: Bool { legendExpanded || showALPRInfo }
 
     private func bumpMapRenderRevision() { mapRenderRevision &+= 1 }
 
@@ -1768,16 +1832,18 @@ struct MapTabView: View {
 
     /// Stage 1, the layout: the full-bleed map region with the scope header (the segments pill
     /// and the chip row, each pill its own surface with the map between them, R21) floating over
-    /// its top edge and three overlays floating on the map (the ALPR notices at the bottom; the
+    /// its top edge and the overlays floating on the map (the ALPR notices at the bottom; the
     /// legend's info button and its card at the lower left; Map options and Center on my location
-    /// at the lower right), and the navigation bar with the title alone. The map fills the region
+    /// at the lower right; on iPhone Duo's inner display the pane handle at the leading centre),
+    /// and the navigation bar with the title alone. The map fills the region
     /// and runs under the header and the tab bar (P3-1 of the 2026-09-26 UI review; HIG Layout:
     /// extend full-screen content under the bars). Its safe area is the header's own layout
     /// height at the top (a `safeAreaInset` on the map itself, so MapKit's camera region and its
     /// logo + Legal line keep clear of the pills) and the tab bar plus the CONSTANT
     /// `mapFloatingControlsInset` at the bottom, so the attribution sits above the buttons row
-    /// (the HIG's "lowest resting position" of custom UI over a map). Neither inset animates and
-    /// nothing the user does moves the map: the header's height changes only with the text size.
+    /// (the HIG's "lowest resting position" of custom UI over a map). Neither inset animates and,
+    /// off iPhone Duo's inner display, nothing the user does moves the map: the header's height
+    /// changes only with the text size.
     /// This layout's own frame runs from the bottom of the bar row to the top of the bottom bar at
     /// BOTH widths, with the bars as its safe area (measured 2026-09-27, R23: iPhone 17 Pro Max
     /// 26.5 sim, top inset 64 and bottom 83; iPad Pro 13-inch (M5) 26.5 sim, top inset 64 and
@@ -1786,12 +1852,15 @@ struct MapTabView: View {
     ///
     /// iPhone Duo's inner display (design 1d): the located pane takes the leading half and this
     /// region the trailing half, meeting at the fold, and the scope header moves into the pane.
+    /// The pane handle on the map's leading edge (`paneHandle`) hides the pane, so this region
+    /// takes both halves and the scope header returns to the map, over its leading half. The
+    /// header is built in one place or the other, so a flip restarts the chip row's scroll.
     /// The pane is a conditional FIRST child of the stack, so the map keeps its identity (and
-    /// MapKit its view) as the fold comes and goes.
+    /// MapKit its view) as the fold or the pane comes and goes.
     private var mapLayout: some View {
         let snap = snapshot
         return HStack(spacing: 0) {
-            if let foldX = fold.x {
+            if let foldX = paneX {
                 DeferredView { locatedPane(snap) }
                     .frame(width: foldX)
             }
@@ -1838,12 +1907,19 @@ struct MapTabView: View {
                 // 17 Pro Max 26.5 sim, R21 review: a swipe begun under the chips moved the map
                 // about 200pt). Wanted: the owner asked for the map between the pills. Deferred
                 // like the overlays (Debug stack).
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    // Not over the map while the located pane carries it (mapLayout).
-                    DeferredView { if fold.x == nil { scopeHeader(snap) } }
+                .safeAreaInset(edge: .top, alignment: .leading, spacing: 0) {
+                    // Not over the map while the located pane carries it (mapLayout). With the
+                    // pane hidden on iPhone Duo it keeps to the leading half, the pane's width,
+                    // so no pill lies across the fold.
+                    DeferredView {
+                        if paneX == nil {
+                            scopeHeader(snap).frame(maxWidth: fold.x ?? .infinity, alignment: .leading)
+                        }
+                    }
                         // Fires only on a change: the header's height moves with the text size
-                        // and with nothing else (the chips scroll sideways; a count changes no
-                        // height), so this is not a per-tick write.
+                        // and, on iPhone Duo, when the header leaves for the pane or returns
+                        // (the chips scroll sideways; a count changes no height), so this is
+                        // not a per-tick write.
                         .onGeometryChange(for: CGFloat.self,
                                           of: { (proxy: GeometryProxy) in proxy.size.height },
                                           action: { (height: CGFloat) in scopeHeaderHeight = height })
@@ -1855,6 +1931,9 @@ struct MapTabView: View {
                 DeferredView { emptyBanner }
                     .padding(.top, scopeHeaderHeight)
                     .padding(.bottom, mapFloatingStackReserve)
+                    // iPhone Duo's inner display: clear of the pane handle, and in the
+                    // trailing half while the map has both (hiddenPaneWidth). 0 elsewhere.
+                    .padding(.leading, hiddenPaneWidth + paneHandleFootprint)
                     .transition(.opacity)
             }
         }
@@ -1864,6 +1943,7 @@ struct MapTabView: View {
         .overlay(alignment: .bottom) { DeferredView { mapBottomNotices } }
         .overlay(alignment: .bottomLeading) { DeferredView { mapLegendOverlay(snap) } }
         .overlay(alignment: .bottomTrailing) { DeferredView { if !hasVerticalBar { mapFloatingStack } } }
+        .overlay(alignment: .leading) { DeferredView { if fold.x != nil { paneHandle } } }
         // Measured on the view that carries the overlays: the whole region between the navigation
         // bar and the tab bar (the floating header included), whose size does not depend on the
         // card, so the card cap that reads it cannot feed back into its own input. Fires only on
@@ -1880,6 +1960,9 @@ struct MapTabView: View {
     /// map still beside it centred on the row's pin and that pin ringed (MapPin.selected). The
     /// bar's close button returns to the rows. The same `selected` drives the outer display's
     /// sheet, so the open dossier is one piece of state on both displays.
+    /// The pane handle (`paneHandle`) hides the pane for a full-screen map. A pin tapped there
+    /// brings the pane back for its dossier alone, and the close button then returns to the
+    /// full-screen map, not to the rows (`mapShowsLocatedPane`).
     @ViewBuilder
     private func locatedPane(_ snap: MapSnapshot) -> some View {
         if let d = selected {
@@ -1922,6 +2005,41 @@ struct MapTabView: View {
         }
     }
 
+    /// Centres the map on `d`'s pin while its width is changing (the pane returning for a pin
+    /// tapped on the full-screen map). A MapCamera, not `selectFromPane`'s region: MapKit fits a
+    /// region to the map's new width, so the full-width span squeezed into the trailing half
+    /// zoomed the map out (camera distance 3.8 km to 8.5 km, iPhone Duo simulator, iOS 27.2,
+    /// 2026-11-25). A distance does not depend on the width. Not animated, like the layout
+    /// change it rides on. No-op before the first camera report.
+    private func centerOnPinKeepingZoom(_ d: Detection) {
+        guard let live = liveCamera.camera, let coord = mapCoord(for: d) else { return }
+        camera = .camera(MapCamera(centerCoordinate: coord, distance: live.distance,
+                                   heading: live.heading, pitch: live.pitch))
+    }
+
+    /// Takes back a camera the user positioned, as the same camera (liveCamera: where the map
+    /// is now; a hinge step in the middle of a drag stopped the map where the drag had brought
+    /// it), so it survives iPhone Duo moving the app to its other display. There the size
+    /// class flips, DossierPresentation's branch gives the map a new identity, and SwiftUI
+    /// re-applies to the new map view only a position the app set. One the user left came up
+    /// at world scale and was still drifting 19 s later (over 1200 camera changes by then; 21
+    /// opening and 13 closing with this, same centre and distance; iPhone Duo simulator,
+    /// iOS 27.2, 2026-11-25).
+    /// Called as the hinge moves (mapPresented), and as the Map leaves the screen or the app
+    /// the foreground (mapFed): no hinge step reached a Map behind another tab, or an app ten
+    /// seconds in the background, and a phone opened then came back at world scale the same
+    /// way (same simulator and day).
+    /// Not at the end of each gesture, which also worked: a glide caught by a finger ends a
+    /// gesture too, and MKMapView.setCamera clears the gestures in flight (iOS 26.5 simulator
+    /// runtime's MapKit, read, not run). Not when the new map appears: a camera set that late
+    /// drifted the same way (about 1000 camera changes in the first 6 s).
+    /// ponytail: iPhone Duo only. A size-class change on iPad rebuilds the map through the
+    /// same branch, so it should lose a hand-positioned camera the same way (not tried on
+    /// iPad); giving DossierPresentation one structural branch would fix both.
+    private func takeBackCamera() {
+        if camera.positionedByUser, let live = liveCamera.camera { camera = .camera(live) }
+    }
+
     /// iPhone Duo: the floating buttons as toolbar image items, which the system stacks in its
     /// vertical bar (design 1c), with the located pane's close button first while a dossier is
     /// open there (the HIG puts Close first). The same actions, names and values as the floating
@@ -1955,13 +2073,22 @@ struct MapTabView: View {
             // iPhone Duo's located pane shows the dossier itself, so neither opens there.
             .modifier(DossierPresentation(selected: $selected, regular: hSize == .regular,
                                           inPane: fold.x != nil))
+            // iPhone Duo's hinge moved a step (HingeMove): the app may be about to move to the
+            // other display (takeBackCamera).
+            .onHingeMove(takeBackCamera)
             // P2-4: the compact sheet opens at the medium detent; pan the tapped pin into the
             // strip it leaves uncovered (a pin near the map's bottom edge would otherwise sit
             // under the sheet). The inspector on regular width never covers the map.
-            .onChange(of: selected?.id) { (_: String?, _: String?) in
+            .onChange(of: selected?.id) { (old: String?, _: String?) in
                 // The located pane's ring follows the selection (map(_:) reads it); the render
                 // gate redraws the pins on a revision bump only.
                 if fold.x != nil { bumpMapRenderRevision() }
+                // A pin tapped on the full-screen map brings the pane back for its dossier
+                // (paneX), and the map narrows to the trailing half: centre the pin there.
+                // Only from no selection: with a dossier already open the pane is on screen,
+                // the map keeps its width, and a second pin leaves the camera alone as it
+                // does in the split.
+                if mapFullScreen, fold.x != nil, old == nil, let d = selected { centerOnPinKeepingZoom(d) }
                 guard hSize != .regular, let d = selected, let coord = mapCoord(for: d) else { return }
                 keepPinVisibleUnderSheet(coord)
             }
@@ -2006,7 +2133,11 @@ struct MapTabView: View {
             .onDisappear {
                 isMapVisible = false
                 cancelSnapshotRefresh()
+                takeBackCamera()   // behind another tab no hinge report arrives
             }
+            // Nor in the background (takeBackCamera).
+            .onReceive(NotificationCenter.default.publisher(
+                for: UIApplication.didEnterBackgroundNotification)) { _ in takeBackCamera() }
             // @Published emits from willSet. Defer one run-loop turn so projection reads the
             // installed array/set, not the previous value from the manager.
             .onReceive(ble.$detections.dropFirst()) { _ in
@@ -2072,8 +2203,9 @@ struct MapTabView: View {
                 fitToDetections()
             }
             .onChange(of: showBreadcrumbs) { (_: Bool, _: Bool) in installFreshSnapshot() }
-            // The located pane comes or goes: refill (or drop) MapSnapshot.located, and redraw
-            // the pins so the selection ring follows.
+            // A fold comes or goes (so the located pane can): refill (or drop)
+            // MapSnapshot.located, and redraw the pins so the selection ring follows. The pane
+            // handle does not pass here: `located` stays filled while a fold splits the tab.
             .onChange(of: fold.x != nil) { (_: Bool, _: Bool) in
                 installFreshSnapshot()
                 bumpMapRenderRevision()
@@ -2377,6 +2509,11 @@ struct MapTabView: View {
         // inset, below the pills, like the logo and Legal line at the bottom.
         .mapControls { MapCompass() }
         .preferredColorScheme(.dark)
+        // The live camera, for takeBackCamera and centerOnPinKeepingZoom: every report, where
+        // the handler below hears only the end of a gesture (each step of a drag came here and
+        // its end came to both; iPhone Duo simulator, iOS 27.2, 2026-11-25). A write to a box
+        // (MapCameraBox), so nothing is invalidated.
+        .onMapCameraChange(frequency: .continuous) { liveCamera.camera = $0.camera }
         .onMapCameraChange(frequency: .onEnd) { ctx in
             // ALPR wedges re-aim to the new heading and tilt. Written only on a change, like the
             // region below, and BEFORE its guard: a pure turn need not move the region at all.
@@ -2826,6 +2963,48 @@ struct MapTabView: View {
             .accessibilityHint("Opens display and reference layer options")
     }
 
+    /// iPhone Duo's inner display: the handle on the map's leading edge. "<" beside the fold
+    /// gives the map both halves; ">" at the screen's leading edge brings the located pane back.
+    /// A tap, or a swipe that starts on it. A short swipe ends inside the button's touch slop
+    /// and lands as its tap, whichever way it went; a longer one counts only the way the chevron
+    /// points (`mapPaneHandleSwipeFlips`), and the map under it does not pan (iPhone Duo
+    /// simulator, iOS 27.2, 2026-11-25). Both paths write the SAME target, so a swipe that
+    /// lands as both cannot flip twice. Floats on the map even under the vertical bar: a bar
+    /// item takes no swipe. Hidden while the legend card or the ALPR callout is open
+    /// (`paneHandleHidden`). iOS only: Android has no located pane.
+    private var paneHandle: some View {
+        let paneShown = paneX != nil
+        return Button { setMapFullScreen(paneShown) } label: {
+            mapControlFace(paneShown ? "chevron.left" : "chevron.right")
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(DragGesture(minimumDistance: mapPaneHandleSwipe).onEnded { drag in
+            if mapPaneHandleSwipeFlips(dx: drag.translation.width, paneShown: paneShown) {
+                setMapFullScreen(paneShown)
+            }
+        })
+        .accessibilityLabel("full screen map")
+        .accessibilityValue(paneShown ? "off" : "on")
+        .accessibilityHint(paneShown ? "Gives the map the whole screen"
+                                     : "Shows the located list beside the map")
+        .accessibilityShowsLargeContentViewer()
+        // Beside the fold the handle clears the strip the system reserves along it.
+        .padding(.leading, paneShown ? max(ACABTheme.pad, fold.xClearance) : ACABTheme.pad)
+        .opacity(paneHandleHidden ? 0 : 1)
+        .allowsHitTesting(!paneHandleHidden)
+        .accessibilityHidden(paneHandleHidden)
+    }
+
+    /// Gives the map both halves of iPhone Duo's inner display, or brings the located pane back.
+    /// Going full closes the pane's dossier with the pane: left selected, it would hold the pane
+    /// open (`paneX`). Not animated: every frame of an animated width change is a camera change
+    /// to MapKit, and each one rebuilds the snapshot (`onMapCameraChange`). Seen when the system
+    /// animates the pane in as the phone opens (iPhone Duo simulator, iOS 27.2, 2026-11-25).
+    private func setMapFullScreen(_ full: Bool) {
+        if full { selected = nil }
+        mapFullScreen = full
+    }
+
     // MARK: Map options sheet
 
     /// A system inset-grouped List with its surfaces PINNED, not left to the system. A sheet runs
@@ -3079,7 +3258,7 @@ struct MapTabView: View {
                 .scrollIndicators(.visible)
                 .scrollIndicatorsFlash(onAppear: true)
         }
-        .padding(.leading, ACABTheme.pad)
+        .padding(.leading, ACABTheme.pad + hiddenPaneWidth)
         .padding(.trailing, ACABTheme.pad + mapControlSize + mapControlSpacing)
         // The floating header's height on top of the 8, so the bounded form ends under the
         // header (the overlay spans the whole region, header band included).

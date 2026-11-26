@@ -368,7 +368,8 @@ fun Modifier.panel(): Modifier = this
     .padding(Acab.padCard)
 
 /** The app's banner frame: a surfaceContainerHigh card (M3 medium shape) holding an optional
- *  20dp icon or spinner (either one drawn in [iconTint]), an optional title, the message, then
+ *  20dp icon or spinner (either one drawn in [iconTint]), an optional title, the message (in
+ *  [textColor], onSurface unless the caller's message carries a tone of its own), then
  *  the caller's actions. The actions trail the message while the message keeps a readable width
  *  beside them at a normal font scale. Otherwise they move to their own end-aligned line under
  *  the message ([bannerActionsStackAt]): always from font scale [BANNER_STACK_FONT_SCALE] in a
@@ -390,6 +391,7 @@ internal fun AcabBanner(
     title: String? = null,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     progress: Boolean = false,
+    textColor: Color = MaterialTheme.colorScheme.onSurface,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     val fontScale = LocalDensity.current.fontScale
@@ -412,7 +414,7 @@ internal fun AcabBanner(
             if (title != null) {
                 Text(title, style = MaterialTheme.typography.titleSmall, color = titleColor)
             }
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = textColor)
         }
     }
     val actionsContent: @Composable () -> Unit = {

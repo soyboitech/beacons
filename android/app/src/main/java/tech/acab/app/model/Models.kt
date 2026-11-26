@@ -791,6 +791,54 @@ val DeviceStatus.bufferHealthNotices: List<BufferHealthNotice>
         if (bufferFaults and 0x20L != 0L) add(BufferHealthNotice.PERSISTENCE_ERROR_RECORDED)
     }
 
+// The staged suggestion to charge the beacon: the battery percent at or under which each stage
+// shows, how far above its own threshold a showing stage has to climb before it eases, and the
+// three sentences. Modelled here, like [BufferHealthNotice], so the Status notice and the Beacon
+// gauge read one rule and both apps' suites pin the numbers and the wording (BatteryAdviceTest,
+// iOS BatteryAdviceTests).
+// TWIN: iOS ios/Beacons/Models/DeviceStatus.swift, where the same values are
+// batteryAdviceLowPercent, batteryAdviceSoonPercent, batteryAdviceNowPercent,
+// batteryAdviceRearmMargin, batteryAdviceLowMessage, batteryAdviceSoonMessage and
+// batteryAdviceNowMessage, the stages are BatteryAdvice and the rule is
+// batteryAdvice(percent:charging:previous:). Numbers and sentences are identical on both sides:
+// firmware/tools/check-signature-drift.py (its battery advice rows) reads each declaration below
+// by pattern and wants exactly one match in this file, so declare each constant once and never
+// quote a declaration in a comment.
+const val BATTERY_ADVICE_LOW_PERCENT = 20
+const val BATTERY_ADVICE_SOON_PERCENT = 10
+const val BATTERY_ADVICE_NOW_PERCENT = 5
+const val BATTERY_ADVICE_REARM_MARGIN = 7
+const val BATTERY_ADVICE_LOW_MESSAGE = "beacon battery is getting low. charge it when you get the chance."
+const val BATTERY_ADVICE_SOON_MESSAGE = "beacon battery is low. charge it soon, or detection will stop."
+const val BATTERY_ADVICE_NOW_MESSAGE = "beacon battery is almost empty. plug it in now to keep detecting."
+
+/** One stage of the charge suggestion. Declared least severe first, which [batteryAdvice] relies
+ *  on (a later entry is a worse one, with a lower [threshold]). [message] is the whole notice,
+ *  drawn as written. TWIN: iOS BatteryAdvice (DeviceStatus.swift). */
+enum class BatteryAdvice(val threshold: Int, val message: String) {
+    LOW(BATTERY_ADVICE_LOW_PERCENT, BATTERY_ADVICE_LOW_MESSAGE),
+    CHARGE_SOON(BATTERY_ADVICE_SOON_PERCENT, BATTERY_ADVICE_SOON_MESSAGE),
+    CHARGE_NOW(BATTERY_ADVICE_NOW_PERCENT, BATTERY_ADVICE_NOW_MESSAGE),
+}
+
+/** The advice for one status frame. None while [charging] or when the board reports no battery
+ *  ([percent] null); otherwise the most severe stage whose threshold [percent] is at or under.
+ *  Worsening is immediate. Easing latches: a stage that is showing ([previous], the caller's last
+ *  result) stays until the level is [BATTERY_ADVICE_REARM_MARGIN] above that stage's own
+ *  threshold, and then the fresh reading stands. It latches because the board's percent is an
+ *  estimate from the cell voltage (firmware readBatteryPct, firmware/src/beacon-board/main.cpp),
+ *  which sags while the radios draw and comes back when the load eases (the FAQ entry "Why does
+ *  the battery percentage jump around?"), so a level resting on a threshold would otherwise blink
+ *  the notice on and off.
+ *  TWIN: iOS batteryAdvice(percent:charging:previous:) (DeviceStatus.swift). */
+fun batteryAdvice(percent: Int?, charging: Boolean, previous: BatteryAdvice?): BatteryAdvice? {
+    if (percent == null || charging) return null
+    val fresh = BatteryAdvice.entries.lastOrNull { percent <= it.threshold }
+    // Nothing showing, or the fresh stage is no better than the one showing: it stands.
+    if (previous == null || (fresh != null && fresh >= previous)) return fresh
+    return if (percent < previous.threshold + BATTERY_ADVICE_REARM_MARGIN) previous else fresh
+}
+
 // org.json hands back "" instead of null for a missing string, so normalize it.
 private fun JSONObject.stringOrNull(key: String): String? =
     if (has(key) && !isNull(key)) optString(key).takeIf { it.isNotEmpty() } else null

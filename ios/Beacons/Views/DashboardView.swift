@@ -188,6 +188,12 @@ struct DashboardView: View {
         statusHeader(snapshot, radioPresentation: radio, connected: connected)
         if bleFault { coprocFaultNotice } else if bleUpdating { coprocUpdatingNotice }
         if ble.syncingOfflineLog { syncingNotice }
+        // Beside a current status only, the Beacon hero's own gate
+        // (DeviceView.hasCurrentBoardStatus): a link that is recovering can still hold its
+        // last frame, and the stage with it.
+        if connected || ble.demoMode, ble.status != nil, let advice = ble.batteryAdvice {
+            batteryAdviceNotice(advice)
+        }
     }
 
     /// The instrument: the radar, the no-direction caption and the motto.
@@ -367,6 +373,26 @@ struct DashboardView: View {
             Text(syncingLabel)
                 .font(ACABTheme.font(.subheadline, tabular: true))
                 .foregroundStyle(ACABTheme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .groupedCell(padding: 12)
+    }
+
+    /// The charge suggestion (BLEManager.batteryAdvice), beside a current status. Here and not
+    /// only on Beacon, like the nRF fault: a beacon that runs flat stops detecting, and this is
+    /// the tab that is open. The first stage is said quietly; the later two take the amber of a
+    /// fault. The Beacon tab's gauge turns amber with it (DeviceView.heroBattery).
+    /// TWIN: android StatusScreen.kt BatteryAdviceBanner.
+    private func batteryAdviceNotice(_ advice: BatteryAdvice) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: advice == .chargeNow ? "battery.0percent" : "battery.25percent")
+                .font(ACABTheme.font(.subheadline, weight: .semibold))
+                .foregroundStyle(ACABTheme.warn)
+                .accessibilityHidden(true)
+            Text(advice.message)
+                .font(ACABTheme.font(.subheadline))
+                .foregroundStyle(advice == .low ? ACABTheme.dim : ACABTheme.warn)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
