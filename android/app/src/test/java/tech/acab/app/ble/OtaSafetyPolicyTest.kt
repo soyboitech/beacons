@@ -5,6 +5,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tech.acab.app.net.FirmwareManifest
+import tech.acab.app.net.LATEST_PUBLISHED_COLONEL_FIRMWARE
+import tech.acab.app.net.LATEST_PUBLISHED_FIRMWARE
 import tech.acab.app.net.NrfBuild
 import tech.acab.app.net.firmwareArtifactResponseAllowed
 import tech.acab.app.net.readBoundedManifestBody
@@ -343,6 +346,30 @@ class OtaSafetyPolicyTest {
         assertFalse(muteCoversPowerCues(null))
         assertFalse(muteCoversPowerCues("2.2.1x"))
         assertFalse(muteCoversPowerCues("ESP32"))
+    }
+
+    @Test
+    fun `the offline fallback names each board at its own published firmware`() {
+        // The offline fallback compares each board against its OWN published line: the beacon
+        // board and rev-B at LATEST_PUBLISHED_FIRMWARE, the three Colonel Panic builds at
+        // LATEST_PUBLISHED_COLONEL_FIRMWARE. The versions are written out, not read from the
+        // constants, so a wrong constant fails as well as a fallback entry that reads the other
+        // one; they are what https://soyboi.tech/firmware/firmware-latest.json listed on
+        // 2026-11-26. A release that bumps a constant bumps its rows here.
+        // TWIN: OtaVersionGateTests.testOfflineFallbackNamesEachBoardAtItsOwnPublishedFirmware
+        // (iOS), the same table.
+        assertEquals(
+            mapOf(
+                "beacon board" to "2.2.4",
+                "beacon board rev-B" to "2.2.4",
+                "ACAB-ouispy" to "2.2.3",
+                "mesh-detect-ACAB" to "2.2.3",
+                "mesh-detect-ACAB-ch1" to "2.2.3",
+            ),
+            FirmwareManifest.FALLBACK.builds.mapValues { it.value.version },
+        )
+        assertEquals("2.2.4", LATEST_PUBLISHED_FIRMWARE)
+        assertEquals("2.2.3", LATEST_PUBLISHED_COLONEL_FIRMWARE)
     }
 
     @Test

@@ -87,4 +87,24 @@ final class OtaVersionGateTests: XCTestCase {
         XCTAssertFalse(try status(version: "2.2.1x").muteCoversPowerCues)
         XCTAssertFalse(try status(version: "ESP32").muteCoversPowerCues)
     }
+
+    /// The offline fallback compares each board against its OWN published line: the beacon board
+    /// and rev-B at DeviceStatus.latestVersion, the three Colonel Panic builds at
+    /// colonelLatestVersion. The versions are written out, not read from the literals, so a wrong
+    /// literal fails as well as a fallback entry that reads the other one; they are what
+    /// https://soyboi.tech/firmware/firmware-latest.json listed on 2026-11-26. A release that
+    /// bumps a literal bumps its rows here.
+    /// TWIN: OtaSafetyPolicyTest "the offline fallback names each board at its own published
+    /// firmware" (Android), the same table.
+    func testOfflineFallbackNamesEachBoardAtItsOwnPublishedFirmware() {
+        XCTAssertEqual(FirmwareManifest.fallback.builds.mapValues(\.version), [
+            "beacon board": "2.2.4",
+            "beacon board rev-B": "2.2.4",
+            "ACAB-ouispy": "2.2.3",
+            "mesh-detect-ACAB": "2.2.3",
+            "mesh-detect-ACAB-ch1": "2.2.3",
+        ])
+        XCTAssertEqual(DeviceStatus.latestVersion, "2.2.4")
+        XCTAssertEqual(DeviceStatus.colonelLatestVersion, "2.2.3")
+    }
 }

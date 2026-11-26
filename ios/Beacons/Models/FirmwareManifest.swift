@@ -22,8 +22,8 @@ import Combine
 /// }
 ///
 /// The manifest is advisory: a bad/missing/malformed fetch never blocks the UI or crashes.
-/// We fall back to the last-good cache, then to a baked-in default that mirrors
-/// DeviceStatus.latestVersion, so the "update available" nudge always has an answer.
+/// We fall back to the last-good cache, then to the baked-in `fallback` below, so the
+/// "update available" nudge always has an answer.
 struct FirmwareManifest: Codable, Equatable {
     var schema: Int
     var builds: [String: Build]
@@ -84,10 +84,13 @@ extension FirmwareManifest {
     func build(forFwLabel label: String) -> Build? { builds[label] }
 
     /// Baked-in fallback used when we've never fetched a manifest and have nothing cached.
-    /// Mirrors the app's per-board ship targets (DeviceStatus.latestVersion for the beacon board,
-    /// colonelLatestVersion for the single-board builds) so the offline nudge matches.
+    /// Mirrors the app's per-board ship targets (DeviceStatus.latestVersion for the beacon board
+    /// and rev-B, colonelLatestVersion for the three Colonel Panic builds) so the offline nudge
+    /// compares each board against its own published line.
     /// OTA is off here on purpose: with no verified image details we only ever point the
     /// user at the browser flasher until a real manifest arrives.
+    /// TWIN: FALLBACK in android FirmwareManifest.kt, the same five labels on the same two
+    /// literals; OtaVersionGateTests and Android's OtaSafetyPolicyTest pin the same table.
     static var fallback: FirmwareManifest {
         let img = AppImage(url: "", sha256: "", size: 0, sig: nil)
         // Per-board flasher pages (matches the Android fallback): the beacon board flashes

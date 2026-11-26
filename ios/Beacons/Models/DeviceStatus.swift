@@ -332,16 +332,24 @@ func batteryAdvice(percent: Int?, charging: Bool, previous: BatteryAdvice?) -> B
 }
 
 extension DeviceStatus {
-    /// Latest BEACON-BOARD firmware this app ships against: the OFFLINE FALLBACK when we have no
-    /// manifest, and the default compare target. The live "update available" nudge comes from the
-    /// firmware manifest (see FirmwareManifestStore); bump this on a beacon-board release so the
-    /// offline path still matches. The Colonel Panic single-board builds (oui-spy / mesh-detect)
-    /// track a separate line now that the beacon board has moved ahead - see colonelLatestVersion.
-    static let latestVersion = "2.2.3"
+    /// Latest PUBLISHED beacon-board firmware this app was built knowing about (fw labels
+    /// "beacon board" and "beacon board rev-B"): the two beacon entries of
+    /// FirmwareManifest.fallback, the answer for a label no manifest lists
+    /// (FirmwareManifestStore.latestVersion(forFwLabel:)) and the default compare target of
+    /// updateAvailable(latest:). The live "update available" nudge comes from the fetched
+    /// manifest; bump this on a beacon-board release so the offline path still matches. The
+    /// Colonel Panic builds have their own literal, colonelLatestVersion. TWIN:
+    /// LATEST_PUBLISHED_FIRMWARE in android FirmwareManifest.kt; check-signature-drift.py pins
+    /// the pair.
+    static let latestVersion = "2.2.4"
 
-    /// Latest firmware for the Colonel Panic single-board builds, which stayed on the shared
-    /// acab_version.h default when the beacon board diverged. Offline fallback only; bump on a
-    /// Colonel Panic release.
+    /// Latest PUBLISHED firmware for the Colonel Panic single-board builds (fw labels
+    /// "ACAB-ouispy", "mesh-detect-ACAB" and "mesh-detect-ACAB-ch1"), which the firmware manifest
+    /// can list behind the beacon board (2.2.3 against 2.2.4 on 2026-11-26). Only the three
+    /// Colonel Panic entries of FirmwareManifest.fallback read it; bump it when the manifest
+    /// publishes a newer build for those labels, not when the beacon board moves. TWIN:
+    /// LATEST_PUBLISHED_COLONEL_FIRMWARE in android FirmwareManifest.kt;
+    /// check-signature-drift.py pins the pair.
     static let colonelLatestVersion = "2.2.3"
 
     /// Just the version number out of `fw` ("ACAB-ouispy 0.1.0" -> "0.1.0").

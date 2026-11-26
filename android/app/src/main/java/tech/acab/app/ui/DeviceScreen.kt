@@ -995,9 +995,11 @@ private val StatTileValueStyle = AcabTypography.titleLarge.telemetry(weight = Fo
 /** The hero's board mark: a 56dp tile, as the old glyph box was wide. */
 private val HeroMarkSize = 56.dp
 
-/** Latest published beacon-board firmware; last-resort offline fallback for an unrecognized
- *  board label (known boards read their per-board version from the manifest). An alias, not a
- *  literal: bump [LATEST_PUBLISHED_FIRMWARE] in net/FirmwareManifest.kt, which FALLBACK reads too. */
+/** Latest published beacon-board firmware; the last-resort answer for a board label the manifest
+ *  does not list. A listed board reads its own entry's version; the baked-in FALLBACK lists the
+ *  Colonel Panic builds at [tech.acab.app.net.LATEST_PUBLISHED_COLONEL_FIRMWARE]. An alias, not a
+ *  literal: bump [LATEST_PUBLISHED_FIRMWARE] in net/FirmwareManifest.kt. TWIN: the
+ *  DeviceStatus.latestVersion default in iOS FirmwareManifestStore.latestVersion(forFwLabel:). */
 private const val LATEST = LATEST_PUBLISHED_FIRMWARE
 
 /**
