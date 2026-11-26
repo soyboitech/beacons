@@ -59,10 +59,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONArray
 import org.json.JSONObject
+import tech.acab.app.model.BatteryAdvice
 import tech.acab.app.model.Detection
 import tech.acab.app.model.DeviceStatus
 import tech.acab.app.model.DeviceType
 import tech.acab.app.model.TimeBasis
+import tech.acab.app.model.batteryAdvice
 import tech.acab.app.model.companyIdHex
 import tech.acab.app.model.wifiBandGhz
 import tech.acab.app.model.validCoord
@@ -2342,6 +2344,28 @@ class AcabBleManager(private val context: Context) {
     private val _status = MutableStateFlow<DeviceStatus?>(null)
     val status: StateFlow<DeviceStatus?> = _status.asStateFlow()
 
+    /** The staged charge suggestion (the batteryAdvice rule in Models.kt) as of the last status
+     *  [installStatus] installed, its only writer. Cleared with [status]: every drop ([cleanup],
+     *  an update reboot included) and leaving sample data clear both, and the rule's latch with
+     *  them. The two are written one after the other with no lock, so a frame racing a teardown
+     *  on the main thread can outlive it, as [status] alone already could.
+     *  TWIN: iOS BLEManager.batteryAdvice, set in the didSet of BLEManager.status. iOS keeps
+     *  its status, and so the stage, across an update reboot; this side does not. */
+    private val _batteryAdvice = MutableStateFlow<BatteryAdvice?>(null)
+    val batteryAdvice: StateFlow<BatteryAdvice?> = _batteryAdvice.asStateFlow()
+
+    /** Installs a decoded status: a board's frame ([ingest]) or the sample frame ([seedDemoData]),
+     *  or clears it (null: a dropped link, leaving sample data), and the charge suggestion with
+     *  it. A frame is folded into the suggestion first, so no frame is published ahead of its own
+     *  advice, and a StateFlow drops a value equal to the one it holds, so a frame that leaves
+     *  the advice where it was publishes nothing for it. [previewDemoStatusToggle] edits the
+     *  sample frame in place without passing here: its edits echo radio and detector switches and
+     *  leave the battery fields alone, and folding one battery reading twice changes nothing. */
+    private fun installStatus(s: DeviceStatus?) {
+        _batteryAdvice.update { if (s == null) null else batteryAdvice(s.battery, s.charging, it) }
+        _status.value = s
+    }
+
     private val _deviceName = MutableStateFlow<String?>(null)
     val deviceName: StateFlow<String?> = _deviceName.asStateFlow()
 
@@ -4034,7 +4058,7 @@ class AcabBleManager(private val context: Context) {
         _syncingOfflineLog.value = false
         _offlineSyncCount.value = 0
         _offlineSyncTotal.value = 0
-        _status.value = null
+        installStatus(null)
         // No link means no OTA channel: a capability left true from the previous session let
         // startOta run against a dead link (see its fail-fast). onDescriptorWrite re-derives it
         // on the next connect; iOS clears otaCapable on every teardown the same way.
@@ -5487,7 +5511,7 @@ class AcabBleManager(private val context: Context) {
             }
             AcabProfile.STATUS -> {
                 val s = DeviceStatus.fromJson(json)
-                _status.value = s
+                installStatus(s)
                 // The connected board's kind is its fw label from here on (targetKind outlives the
                 // drop that clears this status). The remembered record is stamped from the first
                 // frame of a READY session only; a frame that lands before READY is not a session.
@@ -8706,7 +8730,7 @@ class AcabBleManager(private val context: Context) {
         // Mirror the iOS sample payload: the real board emits body-cam state under "axon" (the
         // key both apps read), and total matches the 6 sample detections placeDemoDetections seeds
         // (one per category the Status strip shows), so iOS and Android report the same demo total.
-        _status.value = DeviceStatus.fromJson(JSONObject(
+        installStatus(DeviceStatus.fromJson(JSONObject(
             // "moto" is present so the tour shows the Motorola sub-toggle. Omitting it would make
             // the demo board look like pre-split firmware and hide the control the tour exists to
             // introduce. "axon":true so the parent category is on and the sub-row is not dimmed.
@@ -8716,7 +8740,7 @@ class AcabBleManager(private val context: Context) {
                 BoardKind.MESH_DETECT -> put("fw", "mesh-detect-ACAB 2.2.2")
                 BoardKind.BEACON, null -> Unit
             }
-        })
+        }))
         _state.value = ConnState.READY
         syncLocationOwnership()
         // placeDemoDetections clears + repopulates the same maps the async startup reload fills, so
@@ -8794,7 +8818,7 @@ class AcabBleManager(private val context: Context) {
             approxWatermark = approx
         }
         demoSeenWatermarkSnapshot = null
-        _status.value = null
+        installStatus(null)
         _deviceName.value = null
         _state.value = ConnState.DISCONNECTED
         syncLocationOwnership()

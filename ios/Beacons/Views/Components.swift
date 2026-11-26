@@ -1013,6 +1013,11 @@ struct CategoryStripLayout: Layout {
 struct FoldLine: Equatable {
     var x: CGFloat?
     var tabletopY: CGFloat?
+    /// Half the width the system reserves along a top-to-bottom fold, its margins for interactive
+    /// content included (`ReservedRegion.frame`); 0 without one. A control beside the fold starts
+    /// at least this far from `x` (the Map's pane handle). 20pt on the iPhone Duo simulator,
+    /// iOS 27.2: a 40pt frame, all of it margins.
+    var xClearance: CGFloat = 0
 
     init() {}
 
@@ -1029,7 +1034,7 @@ struct FoldLine: Equatable {
         for region in proxy.reservedRegions(kind: .division, options: .includeInactive) {
             let f = region.frame
             if f.height >= f.width {
-                if f.minX > 0 && f.maxX < size.width { x = f.midX - inset.leading }
+                if f.minX > 0 && f.maxX < size.width { x = f.midX - inset.leading; xClearance = f.width / 2 }
             } else if region.isActive && f.minY > 0 && f.maxY < size.height {
                 tabletopY = f.midY - inset.top
             }
@@ -1077,6 +1082,60 @@ struct FoldColumns: Layout {
                                                      height: bounds.height))
         }
     }
+}
+
+/// How far iPhone Duo's hinge turns, in degrees, before `onHingeMove` reports it again: under
+/// the first step of an opening or a closing (the simulator's first report off closed was
+/// 5.9 degrees), over the tremor of a half-open phone that is only being held. Not tried on a
+/// real hinge: the knob to turn if the Map loses its camera on a flip (too high) or a drag on
+/// a half-open phone is cut short (too low).
+let hingeMoveDegrees: Double = 5
+
+/// Has the hinge moved since `anchor`, the angle last reported? Yes when it closes or leaves
+/// closed, on the first reading and when the hinge stops reporting, and once the angle is
+/// `hingeMoveDegrees` from the anchor. A change between partly open and fully open is left to
+/// the angle: a phone lying open rests at that boundary, and each crossing would run the Map's
+/// take-back under a finger (not tried on a real hinge). Pure, so a test can pin it.
+func hingeMoved(from anchor: Double?, to now: Double?, closedChanged: Bool) -> Bool {
+    if closedChanged { return true }
+    guard let anchor, let now else { return anchor != now }
+    return abs(now - anchor) >= hingeMoveDegrees
+}
+
+/// Runs `action` as iPhone Duo's hinge moves (SwiftUI's `onHingeChange`, iOS 27.1), once per
+/// `hingeMoved` step, not per reading. It starts with the hinge's first degrees, before the
+/// app has moved to the other display: 0.37 s to 0.52 s before over four flips on the iPhone
+/// Duo simulator (iOS 27.2, 2026-11-25). A change of status alone came 0.1 s after the first
+/// reading in the one opening measured, and a flip that waited for it lost the Map's camera
+/// once. Never called on any other device. The anchor is a box, not state: nothing draws it.
+struct HingeMove: ViewModifier {
+    let action: () -> Void
+    @State private var anchor = Anchor()
+
+    final class Anchor { var degrees: Double? }
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.4)   // iOS 27.1 SDK only (see FoldLine.init)
+        if #available(iOS 27.1, *) {
+            content.onHingeChange { (old: DeviceHingeContext, new: DeviceHingeContext) in
+                let now = new.hinge?.angle.degrees
+                guard hingeMoved(from: anchor.degrees, to: now,
+                                 closedChanged: (old.hinge?.status == .closed)
+                                     != (new.hinge?.status == .closed)) else { return }
+                anchor.degrees = now
+                action()
+            }
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
+extension View {
+    func onHingeMove(_ action: @escaping () -> Void) -> some View { modifier(HingeMove(action: action)) }
 }
 
 /// Reports whether the system draws this view's bars as iPhone Duo's vertical bar (UIKit's

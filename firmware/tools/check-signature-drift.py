@@ -447,6 +447,46 @@ def _toggle_title_rows():
     return tuple(rows)
 
 
+def _battery_advice_rows():
+    """One "string" row per number and per sentence of the staged charge suggestion (iOS
+    DeviceStatus.swift `batteryAdvice`, Android Models.kt `batteryAdvice`). Each is a named
+    constant declared once per file; the rule itself is pinned by the twin tests
+    (BatteryAdviceTests / BatteryAdviceTest), which run the same table."""
+    rows = []
+    for what, ios, android in (
+        ("getting-low level (percent)", "LowPercent", "LOW_PERCENT"),
+        ("charge-soon level (percent)", "SoonPercent", "SOON_PERCENT"),
+        ("charge-now level (percent)", "NowPercent", "NOW_PERCENT"),
+        ("re-arm margin (percent points)", "RearmMargin", "REARM_MARGIN"),
+    ):
+        rows.append({
+            "what": "battery advice " + what,
+            "kind": "string",
+            "why": "the charge suggestion starts and eases at one level on both phones; a phone"
+                   " that waits for a lower number says nothing while the other already asks",
+            "ios": (IOS_DEVICE_STATUS, r"\blet\s+batteryAdvice" + ios + r"\s*=\s*(\d+)\b"),
+            "android": (AND_DEVICE_TYPE,
+                        r"\bconst\s+val\s+BATTERY_ADVICE_" + android + r"\s*=\s*(\d+)\b"),
+        })
+    for what, ios, android in (
+        ("getting-low sentence", "LowMessage", "LOW_MESSAGE"),
+        ("charge-soon sentence", "SoonMessage", "SOON_MESSAGE"),
+        ("charge-now sentence", "NowMessage", "NOW_MESSAGE"),
+    ):
+        rows.append({
+            "what": "battery advice " + what,
+            "kind": "string",
+            "why": "the one line that tells the owner to charge the beacon, drawn on the Status"
+                   " tab of both phones; the same stage must say the same thing",
+            "ios": (IOS_DEVICE_STATUS,
+                    r'\blet\s+batteryAdvice' + ios + r'\s*=\s*"((?:[^"\\]|\\.)*)"'),
+            "android": (AND_DEVICE_TYPE,
+                        r'\bconst\s+val\s+BATTERY_ADVICE_' + android
+                        + r'\s*=\s*"((?:[^"\\]|\\.)*)"'),
+        })
+    return tuple(rows)
+
+
 SHARED_CONSTANTS = (
     {
         "what": "detection CSV columns",
@@ -1737,6 +1777,7 @@ SHARED_CONSTANTS = (
     # and is not listed. The lock-screen switch is listed: both apps title it "Hide details on
     # lock screen" since 2026-10-12.
     *_toggle_title_rows(),
+    *_battery_advice_rows(),
     {
         "what": "offline buffer erase row title",
         "kind": "string",

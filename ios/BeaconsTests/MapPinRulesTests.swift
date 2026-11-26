@@ -1210,4 +1210,39 @@ final class MapPinRulesTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(mapControlSize, 44)
         XCTAssertEqual(mapFloatingControlsInset, mapControlMargin + mapControlSize + 10)
     }
+
+    // MARK: - iPhone Duo's pane handle (iOS only: Android has no located pane)
+
+    /// The located pane shows beside the map while a fold splits the tab, until the user gives
+    /// the map both halves; an open dossier brings it back even then, because the pane is where
+    /// a dossier opens on that display. Wrong inputs: the dossier term dropped (a pin tapped on
+    /// the full-screen map selects a detection and shows its dossier nowhere); the fold term
+    /// dropped (every other phone grows a pane).
+    func testTheLocatedPaneHidesForAFullScreenMapAndReturnsForADossier() {
+        XCTAssertTrue(mapShowsLocatedPane(fold: true, fullScreen: false, dossierOpen: false))
+        XCTAssertTrue(mapShowsLocatedPane(fold: true, fullScreen: false, dossierOpen: true))
+        XCTAssertFalse(mapShowsLocatedPane(fold: true, fullScreen: true, dossierOpen: false))
+        XCTAssertTrue(mapShowsLocatedPane(fold: true, fullScreen: true, dossierOpen: true))
+        for fullScreen in [false, true] {
+            for dossierOpen in [false, true] {
+                XCTAssertFalse(mapShowsLocatedPane(fold: false, fullScreen: fullScreen,
+                                                   dossierOpen: dossierOpen))
+            }
+        }
+    }
+
+    /// A drag off the pane handle flips the layout only the way its chevron points: toward
+    /// the pane (negative) while the pane shows, away from the screen edge while it is hidden,
+    /// and only past `mapPaneHandleSwipe`. (A shorter drag lands as the Button's tap and never
+    /// reaches this rule.) Wrong inputs: the sign test dropped (a long swipe away from the pane
+    /// hides it); the threshold dropped (a mostly vertical drag counts as a swipe).
+    func testAPaneHandleSwipeCountsOnlyTheWayTheChevronPoints() {
+        let far = mapPaneHandleSwipe, near = mapPaneHandleSwipe - 1
+        XCTAssertTrue(mapPaneHandleSwipeFlips(dx: -far, paneShown: true))
+        XCTAssertFalse(mapPaneHandleSwipeFlips(dx: far, paneShown: true))
+        XCTAssertFalse(mapPaneHandleSwipeFlips(dx: -near, paneShown: true))
+        XCTAssertTrue(mapPaneHandleSwipeFlips(dx: far, paneShown: false))
+        XCTAssertFalse(mapPaneHandleSwipeFlips(dx: -far, paneShown: false))
+        XCTAssertFalse(mapPaneHandleSwipeFlips(dx: near, paneShown: false))
+    }
 }

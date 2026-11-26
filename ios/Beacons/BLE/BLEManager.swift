@@ -1675,7 +1675,27 @@ final class BLEManager: NSObject, ObservableObject {
     @Published private(set) var detections: [Detection] = []
     /// Evidence/log projection. Active mute rules hide rows elsewhere, not from prior history.
     @Published private(set) var logDetections: [Detection] = []
-    @Published private(set) var status: DeviceStatus?
+    @Published private(set) var status: DeviceStatus? {
+        didSet {
+            // Every writer of a status passes here (a board's frame, the sample frame and its
+            // edits, a clear): the status poll's pace, never a view's. A cleared status clears
+            // the stage and its latch with it. An update reboot is the one drop that keeps the
+            // status (otaHandleDisconnect's early return in didDisconnectPeripheral), so the
+            // stage rides through it to the first frame after the reboot. Android clears both
+            // on that drop too (AcabBleManager.cleanup), so the two can differ there.
+            guard let status else {
+                if batteryAdvice != nil { batteryAdvice = nil }
+                return
+            }
+            let advice = Beacons.batteryAdvice(percent: status.battery, charging: status.charging,
+                                               previous: batteryAdvice)
+            if advice != batteryAdvice { batteryAdvice = advice }
+        }
+    }
+    /// The charge suggestion for the board's battery (`batteryAdvice(percent:charging:previous:)`),
+    /// set by `status`'s observer and published only on a change. It lives exactly as long as
+    /// `status` and is cleared with it. TWIN: android AcabBleManager.batteryAdvice.
+    @Published private(set) var batteryAdvice: BatteryAdvice?
     @Published private(set) var ignored: [IgnoredDevice] = [] {
         didSet {
             DeviceNames.shared.rebuild(watched: watched, ignored: ignored)
@@ -3051,6 +3071,9 @@ final class BLEManager: NSObject, ObservableObject {
         if connectionState == .connecting, reconnectTarget == nil, let pending = peripheral {
             central?.cancelPeripheralConnection(pending)
             peripheral = nil
+            // The first status frame can land before READY (rememberSecureReadyBoard), and the
+            // didDisconnect that would clear it is ignored once the peripheral is dropped.
+            status = nil
             intentionalDisconnectID = nil
             connectionState = (central?.state == .poweredOn) ? .idle : .unknown
             return

@@ -164,6 +164,7 @@ import tech.acab.app.ble.isFirmwareVersionOlder
 import tech.acab.app.ble.muteCoversPowerCues
 import tech.acab.app.ble.renderBoardCopy
 import tech.acab.app.ble.unrepresentedBoardRuleCount
+import tech.acab.app.model.BatteryAdvice
 import tech.acab.app.model.DeviceStatus
 import tech.acab.app.model.DeviceType
 import tech.acab.app.net.FirmwareBuild
@@ -1042,6 +1043,9 @@ internal fun DeviceScreen(
     onOpenSavedLog: () -> Unit = {},
 ) {
     val status by ble.status.collectAsState()
+    // Publishes only when the charge suggestion itself changes (AcabBleManager.installStatus),
+    // not per status frame.
+    val batteryAdvice by ble.batteryAdvice.collectAsState()
     val connectionState by ble.state.collectAsState()
     val logDetections by ble.logDetections.collectAsState()
     // The connect target's kind, kept through a drop; it changes at most once a session.
@@ -2323,6 +2327,10 @@ internal fun DeviceScreen(
                 connectionLine = beaconHeroConnectionLine(heroStatus, connectionPresentation.headerKicker),
                 battery = currentStatus?.battery,
                 charging = currentStatus?.charging == true,
+                // Passed only beside currentStatus, the frame it was folded from: a link that
+                // is not READY can hold a frame, and the advice with it
+                // (AcabBleManager.installStatus).
+                batteryAdvice = batteryAdvice.takeIf { currentStatus != null },
                 connected = connectionPresentation.connected,
                 demo = demo,
                 chip = {
@@ -2859,7 +2867,9 @@ internal fun boardHeroTitle(kind: BoardKind?): String = (kind ?: BoardKind.BEACO
  *  name does not fit on one line beside the mark: the name is measured in its own style against
  *  the card's inner width less the mark and the gap, so no fixed width has to be re-derived when
  *  the type or the gutter changes. The status lines wrap. The battery now sits in the footer, so
- *  it no longer competes with the name. The footer stacks (pill above gauge) at 1.5 and up. The
+ *  it no longer competes with the name; [batteryAdvice] (the manager's charge suggestion, null
+ *  unless the status is current) is what turns its gauge amber ([HeroBattery]). The footer stacks
+ *  (pill above gauge) at 1.5 and up. The
  *  name is [title], the connected board's product name ([boardHeroTitle]), never clamped. The
  *  whole card is one TalkBack node, as the hero row was.
  *  TWIN: iOS DeviceView.deviceHero in SettingsView.swift, which stacks its top line when the
@@ -2872,6 +2882,7 @@ private fun DeviceHero(
     connectionLine: String?,
     battery: Int?,
     charging: Boolean,
+    batteryAdvice: BatteryAdvice?,
     connected: Boolean,
     demo: Boolean,
     chip: @Composable () -> Unit,
@@ -2963,13 +2974,13 @@ private fun DeviceHero(
         if (large) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 chip()
-                HeroBattery(battery, charging)
+                HeroBattery(battery, charging, batteryAdvice)
             }
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 chip()
                 Spacer(Modifier.weight(1f).widthIn(min = 8.dp))
-                HeroBattery(battery, charging)
+                HeroBattery(battery, charging, batteryAdvice)
             }
         }
     }
@@ -2978,20 +2989,22 @@ private fun DeviceHero(
 /** The hero's battery read: a drawn gauge (outline, cap, a fill as wide as the charge) and the
  *  percent, a level you read at a glance where the Material battery glyphs step in bars, and never
  *  taken for a signal or a confidence (BEA-4). The fill is crimson (AcabPalette.crimsonInk, the
- *  hero's crimson) while charging, amber at 15% or less, onSurface otherwise; the charging bolt
+ *  hero's crimson) while charging, amber while the battery advice shows ([advice], the app's one
+ *  low-battery rule: batteryAdvice in Models.kt), onSurface otherwise; the charging bolt
  *  rides on the gauge, cut out in the card colour. One spoken node, "battery 82 percent"
  *  ("charging, battery 82 percent" while charging), inside the hero's merged read.
  *  TWIN: iOS DeviceView.heroBattery in SettingsView.swift, which draws the same continuous gauge
  *  (34 x 16 outline, 1.5 stroke, 3 inset, 2.5 x 6 cap, fill = charge / 100, bolt while charging)
- *  in the same tones (tint charging, warn at 15% or less, the text ink otherwise) and speaks the
- *  same text byte for byte. */
+ *  in the same tones (tint charging, warn while the battery advice shows, the text ink otherwise)
+ *  and speaks the same text byte for byte. */
 @Composable
-private fun HeroBattery(battery: Int?, charging: Boolean) {
+private fun HeroBattery(battery: Int?, charging: Boolean, advice: BatteryAdvice?) {
     battery?.let {
         val scheme = MaterialTheme.colorScheme
+        val low = advice != null && !charging
         val tone = when {
             charging -> Acab.palette.crimsonInk
-            it <= 15 -> Acab.warn
+            low -> Acab.warn
             else -> scheme.onSurface
         }
         val level = it.coerceIn(0, 100) / 100f
@@ -3024,7 +3037,7 @@ private fun HeroBattery(battery: Int?, charging: Boolean) {
             }
             Spacer(Modifier.width(8.dp))
             Text("$it%", style = HeroBatteryStyle,
-                color = if (it <= 15 && !charging) Acab.warn else scheme.onSurface)
+                color = if (low) Acab.warn else scheme.onSurface)
         }
     }
 }

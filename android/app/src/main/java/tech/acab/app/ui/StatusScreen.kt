@@ -20,6 +20,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.filled.Battery0Bar
+import androidx.compose.material.icons.filled.Battery2Bar
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SystemUpdateAlt
@@ -81,6 +83,7 @@ import tech.acab.app.R
 import tech.acab.app.ble.ACTIVE_NEARBY_WINDOW_MS
 import tech.acab.app.ble.AcabBleManager
 import tech.acab.app.ble.OtaPhase
+import tech.acab.app.model.BatteryAdvice
 import tech.acab.app.model.Detection
 import tech.acab.app.model.DeviceStatus
 import tech.acab.app.model.DeviceType
@@ -699,6 +702,9 @@ fun StatusScreen(
     val syncing by ble.syncingOfflineLog.collectAsState()
     val syncCount by ble.offlineSyncCount.collectAsState()
     val syncTotal by ble.offlineSyncTotal.collectAsState()
+    // Publishes only when the charge suggestion itself changes (AcabBleManager.installStatus),
+    // not per status frame.
+    val batteryAdvice by ble.batteryAdvice.collectAsState()
     // OS-level "remove animations", read once per composition: the radar sweep parks, and the two
     // progress banners show a static icon instead of a spinner.
     val reduceMotion = rememberReduceMotion()
@@ -843,6 +849,11 @@ fun StatusScreen(
         // While the board replays its offline buffer on reconnect: a non-blocking banner.
         // determinate once the board's hist lead-in supplies a total; a live count until then.
         if (syncing) SyncingBanner(count = syncCount, total = syncTotal, reduceMotion = reduceMotion)
+
+        // The staged charge suggestion, last in the notice slot, drawn only beside a current
+        // frame (a board's over a link that is not reconnecting, or the sample one): the frame it
+        // was folded from (AcabBleManager.installStatus).
+        if (linkConnected) batteryAdvice?.let { BatteryAdviceBanner(it) }
 
         // The disc, with the no-direction caption directly under it (C9), then the brand line.
         // The scope is 0.75 of the column up to 315dp (statusRadarSide), centred, so it neither
@@ -1597,6 +1608,27 @@ private fun SyncingBanner(count: Int, total: Int, reduceMotion: Boolean) {
         icon = if (reduceMotion) Icons.Filled.Sync else null,
         iconTint = MaterialTheme.colorScheme.onSurfaceVariant,
         progress = !reduceMotion,
+    )
+}
+
+/** The staged suggestion to charge the beacon ([BatteryAdvice], Models.kt), after the syncing
+ *  banner in the same slot. The sentence is the stage's own message, as written, and it carries
+ *  the stage: onSurfaceVariant for the first one, the tone of the updating and syncing banners'
+ *  spinners, so an early heads-up has no alarm colour, and amber for the two later ones, the
+ *  fault banner's tone. The battery glyph is amber at every stage and decorative ([AcabBanner]
+ *  gives its icon no description): Battery0Bar at the last stage and Battery2Bar before it, the
+ *  Material glyphs nearest the two SF Symbols the iOS notice draws (battery.0percent,
+ *  battery.25percent).
+ *  TWIN: iOS DashboardView.batteryAdviceNotice (DashboardView.swift), in statusRows after
+ *  syncingNotice. */
+@Composable
+private fun BatteryAdviceBanner(advice: BatteryAdvice) {
+    AcabBanner(
+        advice.message,
+        Modifier.fillMaxWidth(),
+        icon = if (advice == BatteryAdvice.CHARGE_NOW) Icons.Filled.Battery0Bar else Icons.Filled.Battery2Bar,
+        iconTint = Acab.warn,
+        textColor = if (advice == BatteryAdvice.LOW) MaterialTheme.colorScheme.onSurfaceVariant else Acab.warn,
     )
 }
 

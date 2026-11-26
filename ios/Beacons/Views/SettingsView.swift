@@ -1765,7 +1765,8 @@ struct DeviceView: View {
 
     /// A drawn battery gauge (outline, cap, a fill as wide as the charge) and "NN%": a level you
     /// read at a glance where the SF battery glyphs step in quarters. The fill is crimson while
-    /// charging, amber at 15% or less, the text ink otherwise; the charging bolt rides on the
+    /// charging, amber while the charge suggestion shows (BLEManager.batteryAdvice, the rule the
+    /// Status tab's notice follows), the text ink otherwise; the charging bolt rides on the
     /// gauge. Spoken as one element, "battery 82 percent" ("charging, battery 82 percent" while
     /// it charges). TWIN: android DeviceScreen.kt HeroBattery, which draws the same gauge in the
     /// same three tones and whose contentDescription is the same text byte for byte.
@@ -1773,7 +1774,8 @@ struct DeviceView: View {
     private var heroBattery: some View {
         if hasCurrentBoardStatus, let status = ble.status, let bat = status.battery {
             let charging = status.charging
-            let tone: Color = charging ? ACABTheme.tint : (bat <= 15 ? ACABTheme.warn : ACABTheme.text)
+            let low = ble.batteryAdvice != nil   // nil while charging, so `low` means draining
+            let tone: Color = charging ? ACABTheme.tint : (low ? ACABTheme.warn : ACABTheme.text)
             let level = CGFloat(min(max(bat, 0), 100)) / 100
             HStack(spacing: 8) {
                 HStack(spacing: 1.5) {
@@ -1799,7 +1801,7 @@ struct DeviceView: View {
                 }
                 Text("\(bat)%")
                     .font(ACABTheme.telemetry(.subheadline, weight: .semibold))
-                    .foregroundStyle(bat <= 15 && !charging ? ACABTheme.warn : ACABTheme.text)
+                    .foregroundStyle(low ? ACABTheme.warn : ACABTheme.text)
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(charging ? "charging, battery \(bat) percent" : "battery \(bat) percent")

@@ -66,3 +66,28 @@ final class FoldColumnsTests: XCTestCase {
         XCTAssertEqual(FoldColumns.widths(total: 300, split: -10, gap: 20).leading, 0)
     }
 }
+
+/// Pins `hingeMoved` (Components.swift), the step rule behind `onHingeMove`: the Map takes its
+/// camera back when iPhone Duo's hinge starts to move, and must not when a half-open phone
+/// merely trembles (a camera set cancels a map gesture in flight).
+final class HingeMoveTests: XCTestCase {
+    /// Wrong inputs: the threshold dropped (a 1 degree tremor reports a move); the absolute
+    /// value dropped (a closing hinge, whose angle falls, never reports); the closed test
+    /// dropped (a hinge that closes inside one step goes unreported).
+    func testAMoveIsClosingOrLeavingClosedOrAStepOfFiveDegreesEitherWay() {
+        XCTAssertEqual(hingeMoveDegrees, 5)
+        XCTAssertFalse(hingeMoved(from: 130, to: 131, closedChanged: false))
+        XCTAssertFalse(hingeMoved(from: 130, to: 125.5, closedChanged: false))
+        XCTAssertTrue(hingeMoved(from: 0, to: 5.9, closedChanged: false))
+        XCTAssertTrue(hingeMoved(from: 180, to: 174, closedChanged: false))
+        XCTAssertTrue(hingeMoved(from: 3, to: 0, closedChanged: true))
+    }
+
+    /// The first reading and a hinge that stops reporting both count; no hinge at all, twice,
+    /// does not. Wrong input: nil treated as zero (a phone with no hinge reports a move to 0).
+    func testTheFirstReadingAndALostHingeCountAndNoHingeDoesNot() {
+        XCTAssertTrue(hingeMoved(from: nil, to: 0, closedChanged: false))
+        XCTAssertTrue(hingeMoved(from: 42, to: nil, closedChanged: false))
+        XCTAssertFalse(hingeMoved(from: nil, to: nil, closedChanged: false))
+    }
+}

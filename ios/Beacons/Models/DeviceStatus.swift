@@ -271,6 +271,64 @@ extension DeviceStatus {
     }
 }
 
+// MARK: - Battery advice
+
+// A staged suggestion to charge the beacon, worked out in the app from the status frame's "bat"
+// and "chg": the firmware does nothing of its own at a low battery. Three stages, each starting
+// at or under its level. TWIN: android Models.kt BATTERY_ADVICE_LOW_PERCENT,
+// BATTERY_ADVICE_SOON_PERCENT, BATTERY_ADVICE_NOW_PERCENT, BATTERY_ADVICE_REARM_MARGIN and the
+// three BATTERY_ADVICE_*_MESSAGE strings, the same numbers and the same bytes
+// (check-signature-drift.py pins each pair).
+let batteryAdviceLowPercent = 20
+let batteryAdviceSoonPercent = 10
+let batteryAdviceNowPercent = 5
+/// How far above a stage's level the battery must read before that stage eases. The board's
+/// percent is a voltage estimate and climbs a few points when the radios ease off (the FAQ's
+/// "Why does the battery percentage jump around?"), so a bare threshold would flap. 7 clears
+/// the firmware's own figure for that rebound, about 30 to 50 mV, which is up to 6 points on
+/// the 18% to 30% stretch of its curve, where the first stage sits (readBatteryPct in
+/// firmware/src/beacon-board/main.cpp). Worked from that curve, not from a bench run of the
+/// notice: the knob to turn if the advice still comes and goes, or lingers after a top-up.
+let batteryAdviceRearmMargin = 7
+let batteryAdviceLowMessage = "beacon battery is getting low. charge it when you get the chance."
+let batteryAdviceSoonMessage = "beacon battery is low. charge it soon, or detection will stop."
+let batteryAdviceNowMessage = "beacon battery is almost empty. plug it in now to keep detecting."
+
+/// The stage of the charge suggestion, mildest first. TWIN: android Models.kt BatteryAdvice.
+enum BatteryAdvice: Int, CaseIterable {
+    case low, chargeSoon, chargeNow
+
+    /// The battery level, in percent, at or under which this stage starts.
+    var threshold: Int {
+        switch self {
+        case .low: return batteryAdviceLowPercent
+        case .chargeSoon: return batteryAdviceSoonPercent
+        case .chargeNow: return batteryAdviceNowPercent
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .low: return batteryAdviceLowMessage
+        case .chargeSoon: return batteryAdviceSoonMessage
+        case .chargeNow: return batteryAdviceNowMessage
+        }
+    }
+}
+
+/// The charge suggestion for a battery reading, given the one showing now (`previous`). None
+/// while the board charges or reports no battery. Otherwise the most severe stage whose level
+/// the reading is at or under; a stage that is showing eases only once the reading is
+/// `batteryAdviceRearmMargin` above its level, and worsens at once.
+/// TWIN: android Models.kt batteryAdvice, the same table in BatteryAdviceTest.
+func batteryAdvice(percent: Int?, charging: Bool, previous: BatteryAdvice?) -> BatteryAdvice? {
+    guard let percent, !charging else { return nil }
+    let fresh = BatteryAdvice.allCases.last { percent <= $0.threshold }
+    guard let previous, (fresh?.rawValue ?? -1) < previous.rawValue,
+          percent < previous.threshold + batteryAdviceRearmMargin else { return fresh }
+    return previous
+}
+
 extension DeviceStatus {
     /// Latest BEACON-BOARD firmware this app ships against: the OFFLINE FALLBACK when we have no
     /// manifest, and the default compare target. The live "update available" nudge comes from the
