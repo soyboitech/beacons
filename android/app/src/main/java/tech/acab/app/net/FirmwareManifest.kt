@@ -17,12 +17,23 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** The newest firmware version this app was built knowing about. The one Android literal: the
- *  offline FALLBACK manifest below and the Beacon tab's update nudge (DeviceScreen LATEST) both
- *  read it, so a release bumps one line. It names the PUBLISHED firmware, which can trail the
- *  working tree's ACAB_FW_VERSION while a release is unpublished. iOS twin:
- *  DeviceStatus.latestVersion in DeviceStatus.swift. */
-internal const val LATEST_PUBLISHED_FIRMWARE = "2.2.3"
+/** The newest PUBLISHED beacon-board firmware this app was built knowing about (fw labels
+ *  "beacon board" and "beacon board rev-B"). FALLBACK's two beacon entries read it, and the
+ *  firmware card prints it as the LATEST KNOWN value for a label no manifest lists (DeviceScreen
+ *  LATEST); such a board is never called outdated (boardFirmwareOutdated). It names the
+ *  published build, which can trail the working tree's ACAB_FW_VERSION while a release is
+ *  unpublished. The Colonel Panic builds have their own literal,
+ *  [LATEST_PUBLISHED_COLONEL_FIRMWARE]. TWIN: iOS DeviceStatus.latestVersion in
+ *  DeviceStatus.swift; check-signature-drift.py pins the pair. */
+internal const val LATEST_PUBLISHED_FIRMWARE = "2.2.4"
+
+/** The newest PUBLISHED firmware for the Colonel Panic single-board builds (fw labels
+ *  "ACAB-ouispy", "mesh-detect-ACAB" and "mesh-detect-ACAB-ch1"), which the firmware manifest can
+ *  list behind the beacon board (2.2.3 against 2.2.4 on 2026-11-26). Only FALLBACK's three
+ *  Colonel Panic entries read it; bump it when the manifest publishes a newer build for those
+ *  labels, not when the beacon board moves. TWIN: iOS DeviceStatus.colonelLatestVersion in
+ *  DeviceStatus.swift; check-signature-drift.py pins the pair. */
+internal const val LATEST_PUBLISHED_COLONEL_FIRMWARE = "2.2.3"
 
 /** The User-Agent on every request this app makes itself (the firmware manifest and artifacts,
  *  the ALPR dataset). The platform default names the phone model and OS build; this names only
@@ -220,13 +231,16 @@ class FirmwareManifest private constructor(context: Context) {
             }
 
         /**
-         * Baked-in fallback, used only when there is no cache and no network yet. Every entry is
-         * [LATEST_PUBLISHED_FIRMWARE], so the "update available" nudge still works
-         * offline. Deliberately marks nothing OTA-capable and carries no image, so a cold,
-         * offline start can only ever point at the browser flasher, never at an unverified
-         * in-app download.
+         * Baked-in fallback, used only when there is no cache and no network yet. The two
+         * beacon-board entries are [LATEST_PUBLISHED_FIRMWARE] and the three Colonel Panic
+         * entries [LATEST_PUBLISHED_COLONEL_FIRMWARE], so the offline "update available" nudge
+         * compares each board against its own published line. Deliberately marks nothing
+         * OTA-capable and carries no image, so a cold, offline start can only ever point at the
+         * browser flasher, never at an unverified in-app download. Internal for
+         * OtaSafetyPolicyTest. TWIN: iOS FirmwareManifest.fallback in FirmwareManifest.swift,
+         * the same five labels on the same two literals.
          */
-        private val FALLBACK = FirmwareManifestData(
+        internal val FALLBACK = FirmwareManifestData(
             schema = 1,
             updated = "",
             builds = mapOf(
@@ -242,15 +256,15 @@ class FirmwareManifest private constructor(context: Context) {
                     flasher = "https://soyboi.tech/flash-revb.html", notes = "",
                 ),
                 "ACAB-ouispy" to FirmwareBuild(
-                    version = LATEST_PUBLISHED_FIRMWARE, ota = false, appUrl = "", sha256 = "", size = 0L, sig = "",
+                    version = LATEST_PUBLISHED_COLONEL_FIRMWARE, ota = false, appUrl = "", sha256 = "", size = 0L, sig = "",
                     flasher = "https://soyboitech.github.io/beacons/", notes = "",
                 ),
                 "mesh-detect-ACAB" to FirmwareBuild(
-                    version = LATEST_PUBLISHED_FIRMWARE, ota = false, appUrl = "", sha256 = "", size = 0L, sig = "",
+                    version = LATEST_PUBLISHED_COLONEL_FIRMWARE, ota = false, appUrl = "", sha256 = "", size = 0L, sig = "",
                     flasher = "https://soyboitech.github.io/beacons/", notes = "",
                 ),
                 "mesh-detect-ACAB-ch1" to FirmwareBuild(
-                    version = LATEST_PUBLISHED_FIRMWARE, ota = false, appUrl = "", sha256 = "", size = 0L, sig = "",
+                    version = LATEST_PUBLISHED_COLONEL_FIRMWARE, ota = false, appUrl = "", sha256 = "", size = 0L, sig = "",
                     flasher = "https://soyboitech.github.io/beacons/", notes = "",
                 ),
             ),

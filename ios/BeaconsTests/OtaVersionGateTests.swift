@@ -87,4 +87,38 @@ final class OtaVersionGateTests: XCTestCase {
         XCTAssertFalse(try status(version: "2.2.1x").muteCoversPowerCues)
         XCTAssertFalse(try status(version: "ESP32").muteCoversPowerCues)
     }
+
+    /// The offline fallback compares each board against its OWN published line: the beacon board
+    /// and rev-B at DeviceStatus.latestVersion, the three Colonel Panic builds at
+    /// colonelLatestVersion. The versions are written out, not read from the literals, so a wrong
+    /// literal fails as well as a fallback entry that reads the other one; they are what
+    /// https://soyboi.tech/firmware/firmware-latest.json listed on 2026-11-26. A release that
+    /// bumps a literal bumps its rows here.
+    /// TWIN: OtaSafetyPolicyTest "the offline fallback names each board at its own published
+    /// firmware" (Android), the same table.
+    func testOfflineFallbackNamesEachBoardAtItsOwnPublishedFirmware() {
+        XCTAssertEqual(FirmwareManifest.fallback.builds.mapValues(\.version), [
+            "beacon board": "2.2.4",
+            "beacon board rev-B": "2.2.4",
+            "ACAB-ouispy": "2.2.3",
+            "mesh-detect-ACAB": "2.2.3",
+            "mesh-detect-ACAB-ch1": "2.2.3",
+        ])
+        XCTAssertEqual(DeviceStatus.latestVersion, "2.2.4")
+        XCTAssertEqual(DeviceStatus.colonelLatestVersion, "2.2.3")
+    }
+
+    /// The third row is the rule: a label with no manifest entry (listed: nil) has no published
+    /// build to be behind, so it is not outdated whatever the app's own literals say. On
+    /// 2026-11-26 that covers "beacon c5", "beacon c5 devkitc" and a Mesh-Detect built for
+    /// another channel, none of which the published manifest or FirmwareManifest.fallback lists.
+    /// TWIN: OtaSafetyPolicyTest "a board is outdated only against a build the manifest lists for
+    /// its label" (Android), the same rows.
+    func testBoardIsOutdatedOnlyAgainstABuildTheManifestListsForItsLabel() throws {
+        XCTAssertTrue(try status(version: "2.2.3").firmwareOutdated(listed: "2.2.4", revisionCompatible: true))
+        XCTAssertFalse(try status(version: "2.2.4").firmwareOutdated(listed: "2.2.4", revisionCompatible: true))
+        XCTAssertFalse(try status(version: "2.2.3").firmwareOutdated(listed: nil, revisionCompatible: true))
+        XCTAssertFalse(try status(version: "2.2.3").firmwareOutdated(listed: "2.2.4", revisionCompatible: false))
+        XCTAssertFalse(try status(version: "ESP32").firmwareOutdated(listed: "2.2.4", revisionCompatible: true))
+    }
 }

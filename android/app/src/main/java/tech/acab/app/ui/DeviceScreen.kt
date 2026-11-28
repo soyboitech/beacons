@@ -158,9 +158,9 @@ import tech.acab.app.ble.ConnState
 import tech.acab.app.ble.CombinedUpdatePhase
 import tech.acab.app.ble.CombinedUpdateProgress
 import tech.acab.app.ble.DetectionNotifier
+import tech.acab.app.ble.boardFirmwareOutdated
 import tech.acab.app.ble.connectedBoardKind
 import tech.acab.app.ble.isBoardBackedMute
-import tech.acab.app.ble.isFirmwareVersionOlder
 import tech.acab.app.ble.muteCoversPowerCues
 import tech.acab.app.ble.renderBoardCopy
 import tech.acab.app.ble.unrepresentedBoardRuleCount
@@ -995,9 +995,12 @@ private val StatTileValueStyle = AcabTypography.titleLarge.telemetry(weight = Fo
 /** The hero's board mark: a 56dp tile, as the old glyph box was wide. */
 private val HeroMarkSize = 56.dp
 
-/** Latest published beacon-board firmware; last-resort offline fallback for an unrecognized
- *  board label (known boards read their per-board version from the manifest). An alias, not a
- *  literal: bump [LATEST_PUBLISHED_FIRMWARE] in net/FirmwareManifest.kt, which FALLBACK reads too. */
+/** Latest published beacon-board firmware, as the LATEST KNOWN value the firmware card prints for
+ *  a board label the manifest does not list. Display only: [boardFirmwareOutdated] never calls
+ *  such a board outdated. A listed board reads its own entry's version; the baked-in FALLBACK
+ *  lists the Colonel Panic builds at [tech.acab.app.net.LATEST_PUBLISHED_COLONEL_FIRMWARE]. An
+ *  alias, not a literal: bump [LATEST_PUBLISHED_FIRMWARE] in net/FirmwareManifest.kt. TWIN: the
+ *  DeviceStatus.latestVersion default in iOS FirmwareManifestStore.latestVersion(forFwLabel:). */
 private const val LATEST = LATEST_PUBLISHED_FIRMWARE
 
 /**
@@ -1094,7 +1097,8 @@ internal fun DeviceScreen(
     val currentStatus = status.takeIf { demo || connectionPresentation.connected }
 
     // The firmware manifest is the source of truth for "latest" and the in-app OTA gate; the
-    // hardcoded LATEST is only an offline fallback. Collect the singleton's flow directly.
+    // hardcoded LATEST is only what the card prints for a label the manifest does not list.
+    // Collect the singleton's flow directly.
     val manifest by remember { FirmwareManifest.getInstance(context) }.manifest.collectAsState()
 
     // POST_NOTIFICATIONS (Android 13+) and the app-level notification switch both determine
@@ -1406,8 +1410,10 @@ internal fun DeviceScreen(
     val revisionMatchesManifest =
         if (boardRev != "A" && boardRev != "B") true
         else (status?.firmwareLabel?.lowercase()?.contains("rev-b") == true) == (boardRev == "B")
-    val fwOutdated = fwInstalled != null && isFirmwareVersionOlder(fwInstalled, fwLatest) &&
-        revisionMatchesManifest
+    // Against the listing only, never against LATEST: a label the manifest has no entry for has
+    // no published build to be behind (boardFirmwareOutdated). TWIN: iOS `outdated` in
+    // SettingsView.swift.
+    val fwOutdated = boardFirmwareOutdated(fwInstalled, fwEntry?.version, revisionMatchesManifest)
     // Either radio behind (S3 OR nRF); a terminal we keep on screen (done / failed / partial).
     val combinedStale = (fwEntry?.let { ble.combinedUpdateStale(it) } ?: false) &&
         revisionMatchesManifest
@@ -3107,11 +3113,12 @@ private const val FALLBACK_FLASHER = "https://soyboitech.github.io/beacons/"
 
 /**
  * Installed vs latest firmware, and the ONE-CLICK combined update. The "latest" and the update
- * path come from the manifest [entry] for this board's fw label, falling back to the hardcoded
- * [LATEST] offline. When either radio is behind ([combinedStale]) it offers a single "Update"
- * button that flashes the S3 application firmware and, when it applies, the nRF co-processor in
- * one determinate flow (see CombinedUpdateCoordinator). A board that can't update in-app (not
- * OTA-capable) still points at the browser flasher.
+ * path come from the manifest [entry] for this board's fw label. A label with no entry prints the
+ * hardcoded [LATEST] as its LATEST KNOWN value and is offered no update. When either radio is
+ * behind ([combinedStale]) it offers a single "Update" button that flashes the S3 application
+ * firmware and, when it applies, the nRF co-processor in one determinate flow (see
+ * CombinedUpdateCoordinator). A listed board that can't update in-app (not OTA-capable) still
+ * points at the browser flasher.
  */
 @Composable
 private fun FirmwareCard(
@@ -3132,10 +3139,11 @@ private fun FirmwareCard(
     onCombinedDismiss: () -> Unit,
     onFlash: (String) -> Unit,
 ) {
-    // Manifest version is the source of truth for "latest"; fall back to the baked-in constant
-    // only when the manifest has no entry for this board (offline cold start).
+    // Manifest version is the source of truth for "latest". With no entry for this board's label
+    // the baked-in constant is printed and `outdated` stays false, so that board reaches the
+    // `entry == null` arm below instead of the flasher offer.
     val latest = entry?.version ?: LATEST
-    val outdated = revisionCompatible && installed != null && isFirmwareVersionOlder(installed, latest)
+    val outdated = boardFirmwareOutdated(installed, entry?.version, revisionCompatible)
     val flasher = entry?.flasher?.takeIf { it.isNotEmpty() } ?: FALLBACK_FLASHER
 
     // The combined flow (running, or a done / failed / partial terminal) owns the action area.

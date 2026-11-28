@@ -1936,13 +1936,16 @@ struct DeviceView: View {
     }
     // Latest version from the manifest (falls back to the shipped constant when unlisted).
     private var latestVersion: String { manifest.latestVersion(forFwLabel: fwLabel) }
-    // Installed firmware older than the manifest's latest AND the listing we would flash from
-    // agrees with the revision the board reports. The revision term is not decoration: without it
-    // the promoted banner said "Firmware vX available" and the card handed the user an "Open the
-    // browser flasher" link into the very listing this app just decided is the wrong revision.
-    // Android's `fwOutdated` carries the same term for the same reason.
+    // Installed firmware older than the build the manifest LISTS for this board's label AND the
+    // listing we would flash from agrees with the revision the board reports. Against the listing
+    // only, never `latestVersion`'s baked-in default: a label the manifest has no entry for has
+    // no published build to be behind (DeviceStatus.firmwareOutdated). The revision term is not
+    // decoration: without it the promoted banner said "Firmware vX available" and the card handed
+    // the user an "Open the browser flasher" link into the very listing this app just decided is
+    // the wrong revision. TWIN: android DeviceScreen.kt `fwOutdated`, the same two terms.
     private var outdated: Bool {
-        revisionMatchesManifest && (ble.status?.updateAvailable(latest: latestVersion) ?? false)
+        ble.status?.firmwareOutdated(listed: fwEntry?.version,
+                                     revisionCompatible: revisionMatchesManifest) ?? false
     }
 
     /// The flasher URL to send the user to when OTA isn't offered: manifest first, then the

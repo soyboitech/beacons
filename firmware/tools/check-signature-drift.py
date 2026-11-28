@@ -516,14 +516,26 @@ SHARED_CONSTANTS = (
     {
         "what": "latest published firmware",
         "kind": "string",
-        # The beacon-board line only. iOS keeps a second literal for the Colonel Panic builds
-        # (DeviceStatus.colonelLatestVersion); Android's one constant serves every fallback entry.
+        # The beacon-board line only ("beacon board" and "beacon board rev-B"). The Colonel Panic
+        # builds have their own pair, the next row.
         "why": "the offline fallback each phone compares a board against when no firmware manifest"
                " has loaded; one phone a release behind would call a board current that the other"
                " offers to update",
         "ios": (IOS_DEVICE_STATUS, r'static\s+let\s+latestVersion\s*=\s*"((?:[^"\\]|\\.)*)"'),
         "android": (AND_FIRMWARE_MANIFEST,
                     r'\bconst\s+val\s+LATEST_PUBLISHED_FIRMWARE\s*=\s*"((?:[^"\\]|\\.)*)"'),
+    },
+    {
+        "what": "latest published Colonel Panic firmware",
+        "kind": "string",
+        # ACAB-ouispy, mesh-detect-ACAB and mesh-detect-ACAB-ch1. A pair of its own because the
+        # firmware manifest can list these builds behind the beacon board.
+        "why": "the offline fallback for the OUI-Spy and Mesh-Detect builds; a phone whose literal"
+               " runs ahead would offer one of those boards an update the other phone does not",
+        "ios": (IOS_DEVICE_STATUS,
+                r'static\s+let\s+colonelLatestVersion\s*=\s*"((?:[^"\\]|\\.)*)"'),
+        "android": (AND_FIRMWARE_MANIFEST,
+                    r'\bconst\s+val\s+LATEST_PUBLISHED_COLONEL_FIRMWARE\s*=\s*"((?:[^"\\]|\\.)*)"'),
     },
     {
         "what": "pairing-window hint",
